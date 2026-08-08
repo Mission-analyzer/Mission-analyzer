@@ -10,6 +10,7 @@ Python/Tkinter для перевірки маршрутів `.waypoints` пер�
 > `.waypoints` files — terrain clearance, turn/climb angle checks,
 > landing glide-slope profile, weather at takeoff/landing, and direct
 > MAVLink connect to read/write missions from the flight controller.
+> ![Mission Analyzer](screenshots/mission-analyzer-main.png)
 
 ## Проєкту потрібні люди 🙌
 
