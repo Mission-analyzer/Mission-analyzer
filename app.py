@@ -46,8 +46,8 @@ from analyzer import MissionAnalyzer
 from elevation_view import draw_elevation_profile, draw_takeoff_profile
 from angle_view import draw_angle_profile
 from landing_view import draw_landing_approach
-from map_view import (compute_tile_bounds, fetch_tiles, render_tiles, bind_pan,
-                      MapTooLargeError, compute_area_tile_bounds, render_area_map)
+from map_view import compute_tile_bounds, fetch_tiles, render_tiles, bind_pan, MapTooLargeError
+from overview_map import compute_area_tile_bounds, render_area_map, render_route_overview
 from occupied_layer import fetch_occupied_geojson, extract_polygons
 import i18n
 import theme
@@ -436,7 +436,8 @@ class App(tk.Tk):
                 outer.configure(scrollregion=outer.bbox("all"))
 
             def _on_outer_configure(event):
-                outer.itemconfig(inner_id, width=event.width)
+                if event.width > 20:
+                    outer.itemconfig(inner_id, width=event.width)
 
             inner.bind("<Configure>", _on_inner_configure)
             outer.bind("<Configure>", _on_outer_configure)
@@ -450,16 +451,17 @@ class App(tk.Tk):
             return tab, inner
 
         def add_map_block(parent, map_title: str, height: int = 460):
-            """Карта 4×4 км -- КВАДРАТНА (висота = ширині, підлаштовується
-            при зміні розміру вікна). Панорамування -- перетягуванням миші
-            (bind_pan), без окремих смуг прокрутки: на вкладці має бути
-            лише один спільний вертикальний повзунок."""
+            """Карта -- КВАДРАТНА, на всю ширину вкладки. Ширину задає
+            fill="x" (надійно працює -- підтверджено скріншотом), а
+            висота підганяється під ВЛАСНУ (не чужу) ширину блока напряму
+            в його ж <Configure> -- без посередників. Панорамування --
+            перетягуванням миші (bind_pan), без окремих смуг прокрутки."""
             map_box = ttk.LabelFrame(parent, text=map_title, height=height)
-            map_box.pack(fill="x", expand=False, pady=(0, 8))
+            map_box.pack(fill="x", pady=(0, 8))
             map_box.pack_propagate(False)
 
             def _keep_square(event, _box=map_box):
-                if event.width > 10:
+                if event.width > 20 and abs(event.height - event.width) > 2:
                     _box.configure(height=event.width)
 
             map_box.bind("<Configure>", _keep_square)
@@ -485,7 +487,7 @@ class App(tk.Tk):
             make_scroll_tab), а не по одному на кожен текстовий блок."""
             return tk.Text(
                 parent, wrap="word", font=("Consolas", 9), state="disabled",
-                height=height, relief="solid", borderwidth=1,
+                height=height, width=1, relief="solid", borderwidth=1,
             )
 
         # --- «Зліт» = текст (погода), карта, профіль висоти зльоту ---
@@ -501,7 +503,7 @@ class App(tk.Tk):
         self.takeoff_profile_canvas.bind("<Configure>", lambda e: self._redraw_takeoff_profile())
 
         # --- «Траєкторія» = текст (звіти висоти+кута), карта маршруту, профілі (висота+кут) ---
-        trajectory_tab, trajectory_inner = make_scroll_tab("Траєкторія")
+        trajectory_tab, trajectory_inner = make_scroll_tab("Маршрут")
 
         traj_text_box = ttk.LabelFrame(trajectory_inner, text="Звіт")
         traj_text_box.pack(fill="x", pady=(0, 8))
@@ -512,12 +514,16 @@ class App(tk.Tk):
         self.angle_report_text = make_plain_text(traj_text_box, height=5)
         self.angle_report_text.pack(fill="x", padx=4, pady=(0, 4))
 
-        traj_map_box = ttk.LabelFrame(trajectory_inner, text="Маршрут — вигляд згори")
+        # карта всього маршруту -- окремий, read-only модуль overview_map.py
+        # (без зуму й без можливості редагування -- на відміну від «Місія»,
+        # де планується редактор місії; спільна лише "чиста" математика
+        # тайлів (compute_tile_bounds/fetch_tiles), сама відмальовка -- ні)
+        traj_map_box = ttk.LabelFrame(trajectory_inner, text="Маршрут — вигляд згори", height=460)
         traj_map_box.pack(fill="x", pady=(0, 8))
         traj_map_box.pack_propagate(False)
 
         def _keep_square_traj(event, _box=traj_map_box):
-            if event.width > 10:
+            if event.width > 20 and abs(event.height - event.width) > 2:
                 _box.configure(height=event.width)
 
         traj_map_box.bind("<Configure>", _keep_square_traj)
@@ -531,7 +537,7 @@ class App(tk.Tk):
             if self._trajectory_map_params is None:
                 return
             tiles, zoom, tx_min, tx_max, ty_min, ty_max = self._trajectory_map_params
-            render_tiles(
+            render_route_overview(
                 self.trajectory_map_canvas, self.analyzer, zoom,
                 tx_min, tx_max, ty_min, ty_max, tiles, self._trajectory_map_images,
             )
@@ -552,7 +558,7 @@ class App(tk.Tk):
         self.angle_canvas.bind("<Configure>", lambda e: self._redraw_angle_plot())
 
         # --- «Глісада» = звіт+погода, потім карта, потім графік глісади ---
-        landing_tab, landing_inner = make_scroll_tab("Глісада")
+        landing_tab, landing_inner = make_scroll_tab("Посадка")
         self.glide_report_text = make_plain_text(landing_inner, height=8)
         self.glide_report_text.pack(fill="x", pady=(0, 8))
         add_map_block(landing_inner, "Посадка — 4×4 км")
@@ -882,15 +888,15 @@ class App(tk.Tk):
         write_body(self._get_text(self.takeoff_weather_text) or "Немає даних (натисніть «Отримати метео»).")
         y -= line_h
 
-        write_heading("Траєкторія — графік висоти")
+        write_heading("Маршрут — графік висоти")
         write_body(self._get_text(self.elev_report_text) or "Без зауважень.")
         y -= line_h
 
-        write_heading("Траєкторія — кут траєкторії")
+        write_heading("Маршрут — кут траєкторії")
         write_body(self._get_text(self.angle_report_text) or "Без зауважень.")
         y -= line_h
 
-        write_heading("Глісада — проблеми та погода посадки")
+        write_heading("Посадка — проблеми та погода посадки")
         write_body(self._get_text(self.glide_report_text) or "Без зауважень.")
 
         c.save()
@@ -1323,8 +1329,8 @@ class App(tk.Tk):
         texts = []         # текст окремо для «Зліт» і «Глісада»
 
         for wp, label, az in [
-            (start_wp, "Старт (Зліт)",   az_start),
-            (land_wp,  "Посадка (Глісада)", az_land),
+            (start_wp, "Старт (Зліт)", az_start),
+            (land_wp,  "Посадка",      az_land),
         ]:
             lines = []
             data, err = fetch_point(wp.lat, wp.lon)
@@ -1947,7 +1953,7 @@ class App(tk.Tk):
 
     def _on_trajectory_map_ready(self, tiles, zoom, tx_min, tx_max, ty_min, ty_max):
         self._trajectory_map_params = (tiles, zoom, tx_min, tx_max, ty_min, ty_max)
-        render_tiles(
+        render_route_overview(
             self.trajectory_map_canvas, self.analyzer, zoom,
             tx_min, tx_max, ty_min, ty_max, tiles, self._trajectory_map_images,
         )
