@@ -407,8 +407,20 @@ class App(tk.Tk):
             command=self._fetch_meteo,
         ).pack(side="left")
 
+        # плейсхолдер поки не натиснута "Отримати метео" -- вкладки з
+        # порожніми/сірими картами й текстом виглядають зламаними, тому
+        # ховаємо їх до появи реальних даних
+        self.analysis_placeholder = ttk.Frame(page_analysis)
+        self.analysis_placeholder.pack(fill="both", expand=True, **pad)
+        ttk.Label(
+            self.analysis_placeholder,
+            text="Натисніть «Отримати метео», щоб побачити аналіз місії",
+            font=("Segoe UI", 11),
+            foreground="#888",
+        ).pack(expand=True)
+
         self.notebook = ttk.Notebook(page_analysis)
-        self.notebook.pack(fill="both", expand=True, **pad)
+        # не пакуємо одразу -- з'явиться після _fetch_meteo (див. _show_analysis_tabs)
 
         self._meteo_canvases = []          # [0]=Зліт(старт), [1]=Глісада(посадка)
         self._meteo_map_images = [[], []]  # тримаємо refs до PhotoImage
@@ -445,8 +457,20 @@ class App(tk.Tk):
             def _on_wheel(event):
                 outer.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-            outer.bind("<MouseWheel>", _on_wheel)
-            inner.bind("<MouseWheel>", _on_wheel)
+            # <MouseWheel> НЕ спливає від дочірніх віджетів (текст, канваси
+            # карт/графіків) до батьківського контейнера -- тому просте
+            # outer.bind()/inner.bind() ловить колесо лише над порожнім
+            # місцем. Замість цього тримаємо глобальний перехоплювач, який
+            # вмикається/вимикається залежно від того, чи курсор всередині
+            # цієї вкладки -- так колесо працює над будь-яким її вмістом.
+            def _bind_wheel(_e=None):
+                tab.bind_all("<MouseWheel>", _on_wheel)
+
+            def _unbind_wheel(_e=None):
+                tab.unbind_all("<MouseWheel>")
+
+            tab.bind("<Enter>", _bind_wheel)
+            tab.bind("<Leave>", _unbind_wheel)
 
             return tab, inner
 
@@ -787,6 +811,7 @@ class App(tk.Tk):
         try:
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.units import mm
+            from reportlab.lib.utils import ImageReader
             from reportlab.pdfgen import canvas as pdfcanvas
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
@@ -806,19 +831,85 @@ class App(tk.Tk):
         if not path:
             return
 
+        images = self._capture_analysis_images()
+
         try:
-            self._render_analysis_pdf(path, pdfcanvas, A4, mm, pdfmetrics, TTFont)
+            self._render_analysis_pdf(path, pdfcanvas, A4, mm, pdfmetrics, TTFont, ImageReader, images)
         except Exception as e:
             messagebox.showerror("PDF", f"Не вдалося зберегти PDF:\n{e}")
             return
 
         messagebox.showinfo("PDF", f"Звіт збережено:\n{path}")
 
-    def _render_analysis_pdf(self, path, pdfcanvas, A4, mm, pdfmetrics, TTFont):
-        """Формує PDF зі звітом: Зліт (погода), Траєкторія (висота+кут),
-        Глісада (проблеми+погода). Текстовий звіт -- без растеризації
-        карт/графіків (це окремі tk.Canvas, для їх експорту знадобився б
-        Ghostscript чи подібне -- зайва залежність)."""
+    @staticmethod
+    def _grab_widget_image(widget):
+        """Знімок поточного вигляду віджета (карти/графіка) для вставки в
+        PDF -- через PIL.ImageGrab (потребує, щоб віджет реально був на
+        екрані, тобто його вкладка мала бути активною на момент виклику)."""
+        try:
+            from PIL import ImageGrab
+        except ImportError:
+            return None
+        try:
+            widget.update_idletasks()
+            x = widget.winfo_rootx()
+            y = widget.winfo_rooty()
+            w = widget.winfo_width()
+            h = widget.winfo_height()
+            if w <= 1 or h <= 1:
+                return None
+            return ImageGrab.grab(bbox=(x, y, x + w, y + h))
+        except Exception:
+            return None
+
+    def _capture_analysis_images(self) -> dict:
+        """Проходить по всіх трьох вкладках «Аналіз», роблячи знімки карт
+        і графіків -- ImageGrab бачить лише те, що реально на екрані,
+        тому доводиться по черзі перемикати вкладки. Повертає вихідну
+        вкладку/видимість плейсхолдера як були."""
+        images: dict = {}
+        was_visible = self.notebook.winfo_ismapped() if hasattr(self, "notebook") else False
+        prev_tab = None
+        if was_visible:
+            try:
+                prev_tab = self.notebook.index(self.notebook.select())
+            except tk.TclError:
+                prev_tab = None
+
+        self._show_analysis_tabs()
+
+        try:
+            self.notebook.select(0)  # Зліт
+            self.update()
+            if self._meteo_canvases:
+                images["takeoff_map"] = self._grab_widget_image(self._meteo_canvases[0])
+            images["takeoff_profile"] = self._grab_widget_image(self.takeoff_profile_canvas)
+
+            self.notebook.select(1)  # Маршрут
+            self.update()
+            images["route_map"] = self._grab_widget_image(self.trajectory_map_canvas)
+            images["elevation"] = self._grab_widget_image(self.plot_canvas)
+            images["angle"] = self._grab_widget_image(self.angle_canvas)
+
+            self.notebook.select(2)  # Посадка
+            self.update()
+            if len(self._meteo_canvases) > 1:
+                images["landing_map"] = self._grab_widget_image(self._meteo_canvases[1])
+            images["landing_profile"] = self._grab_widget_image(self.landing_canvas)
+        finally:
+            if was_visible and prev_tab is not None:
+                self.notebook.select(prev_tab)
+            else:
+                self._hide_analysis_tabs()
+
+        return images
+
+    def _render_analysis_pdf(self, path, pdfcanvas, A4, mm, pdfmetrics, TTFont, ImageReader, images: dict):
+        """Формує PDF зі звітом: Зліт (погода+карта+профіль), Маршрут
+        (звіти+карта маршруту+графіки висоти/кута), Посадка
+        (проблеми+погода+карта+графік глісади). Карти/графіки вставляються
+        як знімки екрана (PIL.ImageGrab), зроблені перед викликом цього
+        методу -- сам pdfcanvas не має доступу до вікна програми."""
         # шрифт з підтримкою кирилиці, якщо є в системі; інакше -- вбудований
         font_name = "Helvetica"
         for candidate in ("C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/calibri.ttf"):
@@ -876,6 +967,27 @@ class App(tk.Tk):
                 c.drawString(margin, y, line)
                 y -= line_h
 
+        def write_image(pil_img, max_w_mm=170, max_h_mm=110):
+            nonlocal y
+            if pil_img is None:
+                return
+            iw, ih = pil_img.size
+            if iw <= 1 or ih <= 1:
+                return
+            max_w = max_w_mm * mm
+            max_h = max_h_mm * mm
+            scale = min(max_w / iw, max_h / ih, 1.0)
+            draw_w = iw * scale
+            draw_h = ih * scale
+            if y - draw_h < margin:
+                new_page()
+            c.drawImage(
+                ImageReader(pil_img), margin, y - draw_h,
+                width=draw_w, height=draw_h,
+                preserveAspectRatio=True, mask="auto",
+            )
+            y -= draw_h + line_h
+
         c.setFont(font_name, 9)
         write_title("Звіт аналізу місії — Mission Analyzer")
         write_body(f"Файл місії: {self.file_var.get() or '—'}")
@@ -886,18 +998,27 @@ class App(tk.Tk):
 
         write_heading("Зліт — погода в точці старту")
         write_body(self._get_text(self.takeoff_weather_text) or "Немає даних (натисніть «Отримати метео»).")
+        write_image(images.get("takeoff_map"))
+        write_image(images.get("takeoff_profile"))
         y -= line_h
+
+        write_heading("Маршрут — карта")
+        write_image(images.get("route_map"))
 
         write_heading("Маршрут — графік висоти")
         write_body(self._get_text(self.elev_report_text) or "Без зауважень.")
+        write_image(images.get("elevation"))
         y -= line_h
 
         write_heading("Маршрут — кут траєкторії")
         write_body(self._get_text(self.angle_report_text) or "Без зауважень.")
+        write_image(images.get("angle"))
         y -= line_h
 
         write_heading("Посадка — проблеми та погода посадки")
         write_body(self._get_text(self.glide_report_text) or "Без зауважень.")
+        write_image(images.get("landing_map"))
+        write_image(images.get("landing_profile"))
 
         c.save()
 
@@ -1251,6 +1372,24 @@ class App(tk.Tk):
         if url:
             webbrowser.open(url)
 
+    def _hide_analysis_tabs(self):
+        """Повертає плейсхолдер замість вкладок -- викликається при
+        завантаженні нової місії, доки для неї ще не отримано погоду."""
+        if hasattr(self, "notebook"):
+            self.notebook.pack_forget()
+        if hasattr(self, "analysis_placeholder"):
+            pad = {"padx": 6, "pady": 4}
+            self.analysis_placeholder.pack(fill="both", expand=True, **pad)
+
+    def _show_analysis_tabs(self):
+        """Ховає плейсхолдер і показує вкладки «Аналіз» -- викликається,
+        коли користувач натискає «Отримати метео» (до того порожні/сірі
+        вкладки виглядали б зламаними)."""
+        if hasattr(self, "analysis_placeholder"):
+            self.analysis_placeholder.pack_forget()
+        pad = {"padx": 6, "pady": 4}
+        self.notebook.pack(fill="both", expand=True, **pad)
+
     def _fetch_meteo(self):
         """Запит метеоданих з Open-Meteo для координат старту та посадки."""
         if self.analyzer is None:
@@ -1275,6 +1414,7 @@ class App(tk.Tk):
         start_wp = wps[0]
         land_wp  = wps[-1]
 
+        self._show_analysis_tabs()
         self._set_meteo_texts("Завантаження метеоданих...", "Завантаження метеоданих...")
         self.notebook.select(0)  # перемикаємось на вкладку «Зліт»
         threading.Thread(
@@ -1671,6 +1811,7 @@ class App(tk.Tk):
 
     def _finish_load(self):
         self.mission_content.tkraise()
+        self._hide_analysis_tabs()
         self.analyzer.analyze()
         self._distribute_report_text(self._captured_report())
         self._redraw_plot()
@@ -1721,9 +1862,23 @@ class App(tk.Tk):
         # parts[0] -- текст до першого заголовка; далі йдуть пари (заголовок, тіло)
 
         intro = parts[0].strip()
-        elevation_blocks = [intro] if intro else []
+        elevation_blocks = []
         angle_blocks = []
         glide_blocks = []
+
+        if intro:
+            # у вступному тексті (до першого "=== ... ===") може ховатися
+            # абзац "Глісада заходу на посадку..." без власного заголовка --
+            # витягуємо його окремо, решта інтро йде в блок висоти
+            intro_paragraphs = re.split(r"\n\s*\n", intro)
+            intro_elevation_parts = []
+            for para in intro_paragraphs:
+                if "глісад" in para.lower():
+                    glide_blocks.append(para.strip())
+                else:
+                    intro_elevation_parts.append(para)
+            if intro_elevation_parts:
+                elevation_blocks.append("\n\n".join(intro_elevation_parts))
 
         i = 1
         while i < len(parts):
