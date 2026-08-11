@@ -6,6 +6,7 @@ elevation_view.py — отрисовка профиля высоты мисси�
 
 from __future__ import annotations
 
+import math
 import tkinter as tk
 
 from analyzer import MissionAnalyzer
@@ -15,11 +16,14 @@ import i18n
 def draw_elevation_profile(
     canvas: tk.Canvas, analyzer: MissionAnalyzer, step_m: float = 50.0,
     max_dist_m: float | None = None, title: str | None = None,
+    show_angles: bool = False,
 ):
     """
     Полностью перерисовывает canvas профилем высоты текущей миссии.
     Якщо задано max_dist_m -- обрізає профіль по відстані (для зльоту,
     де потрібні лише перші кілька точок, а не весь маршрут).
+    Якщо show_angles=True -- додає вертикальні пунктирні лінії по
+    точках і підписи кута підйому/зниження між ними (як на «Посадка»).
     """
     canvas.delete("all")
     if analyzer is None:
@@ -29,32 +33,36 @@ def draw_elevation_profile(
     height = max(canvas.winfo_height(), 150)
 
     try:
-        profile = analyzer.elevation_profile(step_m=step_m)
+        profile = analyzer.elevation_profile(step_m=step_m, max_dist_m=max_dist_m)
     except ValueError:
         return
 
-    dist_m_all = profile["dist"]
-    mission_all = profile["mission_alt"]
-    terrain_all = profile["terrain_alt"]
-    waypoints_all = profile["waypoints"]
-
-    if max_dist_m is not None:
-        cut = next((i for i, d in enumerate(dist_m_all) if d > max_dist_m), len(dist_m_all))
-        cut = max(cut, 2)  # хоча б дві точки, інакше нема що малювати
-        dist_m = dist_m_all[:cut]
-        mission_vals = mission_all[:cut]
-        terrain_vals = terrain_all[:cut]
-        waypoints = [wp for wp in waypoints_all if wp[0] <= dist_m[-1]]
-    else:
-        dist_m = dist_m_all
-        mission_vals = mission_all
-        terrain_vals = terrain_all
-        waypoints = waypoints_all
+    dist_m = profile["dist"]
+    mission_vals = profile["mission_alt"]
+    terrain_vals = profile["terrain_alt"]
+    waypoints = profile["waypoints"]
 
     dist_km = [d / 1000 for d in dist_m]
     has_terrain = analyzer.terrain is not None and any(v is not None for v in terrain_vals)
 
-    margin_l, margin_r, margin_t, margin_b = 55, 15, 25, 35
+    # якщо треба підписи кутів -- зверху потрібне місце під "сходинки"
+    # підписів (одна на кожен відрізок між точками), як на графіку глісади.
+    # На малому канвасі це може з'їсти забагато місця -- стискаємо компактніше.
+    valid_wps = [(d, a, seq) for d, a, idx, seq in waypoints if a is not None]
+    n_segs = max(len(valid_wps) - 1, 0)
+    leg_rows_top, row_h = 26, 12
+    margin_t = 25
+    if show_angles and n_segs > 0:
+        needed_top = leg_rows_top + n_segs * row_h + 6
+        available_top = height * 0.4
+        if needed_top > available_top:
+            scale = max(available_top / needed_top, 0.4)
+            row_h = max(row_h * scale, 7)
+            leg_rows_top = max(leg_rows_top * scale, 16)
+            needed_top = leg_rows_top + n_segs * row_h + 6
+        margin_t = max(margin_t, needed_top)
+
+    margin_l, margin_r, margin_b = 55, 15, 35
     plot_w = max(width - margin_l - margin_r, 10)
     plot_h = max(height - margin_t - margin_b, 10)
 
@@ -124,6 +132,26 @@ def draw_elevation_profile(
     for i in range(len(pts) - 1):
         canvas.create_line(*pts[i], *pts[i + 1], fill="#1f77b4", width=2)
 
+    # вертикальні пунктирні лінії по точках + підписи кута підйому/зниження
+    # між ними -- як на графіку глісади (тільки при show_angles=True)
+    if show_angles:
+        for d, a, seq in valid_wps:
+            x = X(d / 1000)
+            canvas.create_line(x, margin_t, x, height - margin_b, fill="#cccccc", dash=(2, 2))
+
+        for i in range(len(valid_wps) - 1):
+            d1, a1, seq1 = valid_wps[i]
+            d2, a2, seq2 = valid_wps[i + 1]
+            delta_d = d2 - d1
+            delta_a = a2 - a1
+            angle_deg = math.degrees(math.atan2(delta_a, delta_d)) if delta_d else 0.0
+            xm = (X(d1 / 1000) + X(d2 / 1000)) / 2
+            row_y = leg_rows_top + i * row_h
+            canvas.create_text(
+                xm, row_y, text=f"{angle_deg:+.1f}°",
+                font=("Arial", 8), fill="#333333",
+            )
+
     # точки waypoint'ов
     for d, a, idx, seq in waypoints:
         if a is None:
@@ -139,24 +167,32 @@ def draw_takeoff_profile(canvas: tk.Canvas, analyzer: MissionAnalyzer, n_wps: in
     """
     Профіль висоти лише для зльоту: точка старту + перші n_wps точок
     маршруту (детальніше, ніж загальний профіль -- крок 10 м замість 50).
+    Вертикальні пунктирні лінії й підписи кута -- як на графіку глісади.
     """
     if analyzer is None:
         canvas.delete("all")
         return
-    try:
-        profile = analyzer.elevation_profile(step_m=step_m)
-    except ValueError:
-        canvas.delete("all")
-        return
 
-    waypoints = profile["waypoints"]
-    if len(waypoints) < 2:
+    # Відстань до потрібної точки рахуємо НАПРЯМУ по координатах точок
+    # маршруту (haversine, O(n_wps) -- фактично миттєво), а НЕ через
+    # elevation_profile(): той рахує профіль ВСЬОГО маршруту з кроком
+    # step_m, і виклик лише заради відстані до 2-3 перших точок на
+    # довгому маршруті (сотні км) міг займати відчутний час.
+    nav_wps = getattr(analyzer, "nav_wps", None) or []
+    if len(nav_wps) < 2:
         max_dist = None  # замало точок -- покажемо все, що є
     else:
-        cutoff_wp = waypoints[min(n_wps, len(waypoints)) - 1]
-        max_dist = cutoff_wp[0] * 1.08  # трохи запасу праворуч від останньої точки
+        from geo import haversine_m
+        cutoff_idx = min(n_wps, len(nav_wps) - 1)
+        dist = 0.0
+        for i in range(cutoff_idx):
+            dist += haversine_m(
+                nav_wps[i].lat, nav_wps[i].lon,
+                nav_wps[i + 1].lat, nav_wps[i + 1].lon,
+            )
+        max_dist = dist * 1.08  # трохи запасу праворуч від останньої точки
 
     draw_elevation_profile(
         canvas, analyzer, step_m=step_m, max_dist_m=max_dist,
-        title="Профіль висоти — зліт",
+        title="Профіль висоти — зліт", show_angles=True,
     )
