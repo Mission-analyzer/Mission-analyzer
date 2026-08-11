@@ -1192,6 +1192,12 @@ class App(tk.Tk):
         i18n.set_lang(lang_code)
         self._save_settings()
 
+        # запам'ятовуємо, чи були вкладки "Аналіз" реально показані (а не
+        # плейсхолдер) -- щоб після перебудови UI відновити той самий
+        # стан, а не рахувати важкі графіки/карту даремно, якщо їх і не
+        # було видно
+        tabs_were_visible = hasattr(self, "notebook") and self.notebook.winfo_ismapped()
+
         for child in self.winfo_children():
             child.destroy()
 
@@ -1207,11 +1213,9 @@ class App(tk.Tk):
             self.status_var.set(
                 i18n.t("status_ready_fmt", n=len(self.analyzer.nav_wps), m=len(self.analyzer.issues))
             )
-            self._redraw_plot()
-            self._redraw_takeoff_profile()
-            self._redraw_angle_plot()
-            self._redraw_landing_plot()
-            self._load_trajectory_map()
+            self._analysis_built = False
+            if tabs_were_visible:
+                self._show_analysis_tabs()  # сам викличе _ensure_analysis_built()
             self._populate_mission_table(self.analyzer.all_wps)
             self.mission_content.tkraise()
 
@@ -1385,6 +1389,7 @@ class App(tk.Tk):
         """Ховає плейсхолдер і показує вкладки «Аналіз» -- викликається,
         коли користувач натискає «Отримати метео» (до того порожні/сірі
         вкладки виглядали б зламаними)."""
+        self._ensure_analysis_built()
         if hasattr(self, "analysis_placeholder"):
             self.analysis_placeholder.pack_forget()
         pad = {"padx": 6, "pady": 4}
@@ -1814,17 +1819,32 @@ class App(tk.Tk):
         self._hide_analysis_tabs()
         self.analyzer.analyze()
         self._distribute_report_text(self._captured_report())
-        self._redraw_plot()
-        self._redraw_takeoff_profile()
-        self._redraw_angle_plot()
-        self._redraw_landing_plot()
-        self._load_trajectory_map()
+        # важкі елементи "Аналіз" (профілі висоти/кута/глісади -- SRTM-запити
+        # на кожен крок маршруту, карта маршруту -- мережевий фетч тайлів)
+        # рахуються ЛІНИВО, при першому реальному відкритті сторінки
+        # (_ensure_analysis_built, викликається з _show_analysis_tabs), а
+        # не одразу тут -- інакше кожне "Завантажити" на "Місія" зайво
+        # рахувало б усе це, навіть якщо користувач "Аналіз" ще не відкривав
+        self._analysis_built = False
         self.status_var.set(
             i18n.t("status_ready_fmt", n=len(self.analyzer.nav_wps), m=len(self.analyzer.issues))
         )
         self._compute_arrival_time()
         self._save_settings()
         self.render_map()
+
+    def _ensure_analysis_built(self):
+        """Лінива побудова важких елементів «Аналіз» (графіки, карта
+        маршруту) -- рахуються один раз, при першому реальному показі
+        вкладок, а не при кожному завантаженні місії на «Місія»."""
+        if getattr(self, "_analysis_built", False) or self.analyzer is None:
+            return
+        self._redraw_plot()
+        self._redraw_takeoff_profile()
+        self._redraw_angle_plot()
+        self._redraw_landing_plot()
+        self._load_trajectory_map()
+        self._analysis_built = True
 
     def _captured_report(self) -> str:
         buf = io.StringIO()
