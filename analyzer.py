@@ -461,11 +461,17 @@ class MissionAnalyzer:
             for i in range(len(pts) - 1)
         )
 
-    def elevation_profile(self, step_m: float = 50.0) -> dict:
+    def elevation_profile(self, step_m: float = 50.0, max_dist_m: float | None = None) -> dict:
         """
         Сэмплирует маршрут с шагом step_m и возвращает профиль:
         дистанцию, высоту миссии (AMSL, линейная интерполяция между
         точками) и высоту рельефа (если задан self.terrain).
+        Якщо задано max_dist_m -- ЗУПИНЯЄ семплювання одразу після цієї
+        відстані (а не рахує весь маршрут і відкидає зайве постфактум) --
+        важливо для довгих маршрутів, коли графіку потрібен лише короткий
+        відрізок (напр. профіль зльоту): без цього довелось би робити
+        SRTM-запит на кожні step_m метрів ВСЬОГО маршруту, навіть якщо
+        реально показуються перші кілька сотень метрів.
         Используется elevation_view.py для отрисовки графика.
         """
         pts = self.nav_wps
@@ -507,7 +513,27 @@ class MissionAnalyzer:
 
             cum_dist += seg_dist
 
-        # финальная точка маршрута
+            if max_dist_m is not None and cum_dist > max_dist_m:
+                # додаємо межову точку і одразу виходимо -- решту маршруту
+                # не семплюємо взагалі (в цьому весь сенс max_dist_m)
+                dist_list.append(cum_dist)
+                mission_alt_list.append(alt_b)
+                if self.terrain is not None:
+                    try:
+                        terrain_alt_list.append(self.terrain.get_elevation(b.lat, b.lon))
+                    except SRTMError:
+                        terrain_alt_list.append(None)
+                else:
+                    terrain_alt_list.append(None)
+                wp_markers.append((cum_dist, alt_b, b.index, i + 2))
+                return {
+                    "dist": dist_list,
+                    "mission_alt": mission_alt_list,
+                    "terrain_alt": terrain_alt_list,
+                    "waypoints": wp_markers,
+                }
+
+        # финальная точка маршрута (дійшли до кінця без обрізання)
         last = pts[-1]
         dist_list.append(cum_dist)
         mission_alt_list.append(abs_alts[-1])
