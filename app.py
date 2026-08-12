@@ -53,8 +53,8 @@ import i18n
 import theme
 import icons
 import settings
-import version
-import changelog
+import meta
+import updater
 
 DEFAULT_ZOOM = 9
 DEFAULT_PROVIDER_KEY = "google_hybrid"
@@ -95,6 +95,7 @@ class App(tk.Tk):
         self._init_vars()
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.after(1500, lambda: self._check_for_updates(silent=True))
 
     # ---------------------------------------------------------- переменные --
 
@@ -695,10 +696,22 @@ class App(tk.Tk):
 
         changelog_tab = ttk.Frame(help_notebook)
         help_notebook.add(changelog_tab, text=i18n.t("tab_changelog"))
+
+        update_row = ttk.Frame(changelog_tab)
+        update_row.pack(fill="x", pady=(0, 6))
+        ttk.Button(
+            update_row, text="Перевірити оновлення",
+            command=self._check_for_updates,
+        ).pack(side="left")
+        self.update_status_var = tk.StringVar(value="")
+        ttk.Label(update_row, textvariable=self.update_status_var, foreground="#666").pack(
+            side="left", padx=(10, 0)
+        )
+
         changelog_text = scrolledtext.ScrolledText(changelog_tab, wrap="word", font=("Segoe UI", 10))
         changelog_text.pack(fill="both", expand=True)
-        changelog_text.insert("end", f"{i18n.t('app_title')} — {i18n.t('label_version')} {version.VERSION}")
-        changelog_text.insert("end", changelog.format_changelog(i18n.get_lang()))
+        changelog_text.insert("end", f"{i18n.t('app_title')} — {i18n.t('label_version')} {meta.VERSION}")
+        changelog_text.insert("end", meta.format_changelog(i18n.get_lang()))
         changelog_text.config(state="disabled")
 
         status_bar = ttk.Frame(self, style="Status.TFrame")
@@ -1845,6 +1858,83 @@ class App(tk.Tk):
         self._redraw_landing_plot()
         self._load_trajectory_map()
         self._analysis_built = True
+
+    def _check_for_updates(self, silent: bool = False):
+        """Перевіряє GitHub Releases у фоновому потоці. silent=True --
+        для тихої перевірки при старті (без повідомлень про помилку/
+        відсутність оновлень, лише якщо реально є новіша версія)."""
+        if hasattr(self, "update_status_var"):
+            self.update_status_var.set("Перевірка оновлень...")
+
+        def worker():
+            try:
+                release = updater.check_latest_release()
+                has_update = updater.is_newer(release["tag"], meta.VERSION)
+            except updater.UpdateError as e:
+                self.after(0, lambda: self._on_update_check_done(None, str(e), silent))
+                return
+            self.after(0, lambda: self._on_update_check_done(release if has_update else False, None, silent))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_check_done(self, release, error: str | None, silent: bool):
+        if error:
+            if hasattr(self, "update_status_var"):
+                self.update_status_var.set("")
+            if not silent:
+                messagebox.showerror("Оновлення", f"Не вдалося перевірити оновлення:\n{error}")
+            return
+
+        if release is False:
+            if hasattr(self, "update_status_var"):
+                self.update_status_var.set(f"Встановлена версія актуальна ({meta.VERSION})")
+            elif not silent:
+                messagebox.showinfo("Оновлення", f"У вас найновіша версія ({meta.VERSION}).")
+            return
+
+        if hasattr(self, "update_status_var"):
+            self.update_status_var.set(f"Доступна нова версія: {release['tag']}")
+
+        body = (release["body"] or "").strip()
+        body_preview = (body[:400] + "…") if len(body) > 400 else body
+        msg = f"Доступна нова версія {release['tag']} (зараз встановлено {meta.VERSION})."
+        if body_preview:
+            msg += f"\n\nЩо нового:\n{body_preview}"
+        msg += "\n\nЗавантажити і встановити зараз?"
+
+        if messagebox.askyesno("Доступне оновлення", msg):
+            self._apply_update(release)
+
+    def _apply_update(self, release: dict):
+        if hasattr(self, "update_status_var"):
+            self.update_status_var.set(f"Завантаження {release['tag']}...")
+
+        def worker():
+            try:
+                app_dir = os.path.dirname(os.path.abspath(__file__))
+                backup_dir = updater.download_and_apply_update(release["zip_url"], app_dir)
+            except Exception as e:
+                self.after(0, lambda: self._on_update_apply_done(None, str(e)))
+                return
+            self.after(0, lambda: self._on_update_apply_done(backup_dir, None))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_update_apply_done(self, backup_dir, error: str | None):
+        if error:
+            if hasattr(self, "update_status_var"):
+                self.update_status_var.set("")
+            messagebox.showerror("Оновлення", f"Не вдалося встановити оновлення:\n{error}")
+            return
+
+        if hasattr(self, "update_status_var"):
+            self.update_status_var.set("Оновлено — перезапустіть програму")
+        messagebox.showinfo(
+            "Оновлення",
+            "Оновлення встановлено.\n\n"
+            f"Резервна копія попередніх файлів: {backup_dir}\n\n"
+            "Перезапустіть програму, щоб застосувати зміни.",
+        )
 
     def _captured_report(self) -> str:
         buf = io.StringIO()
