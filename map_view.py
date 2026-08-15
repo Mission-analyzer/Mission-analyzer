@@ -24,6 +24,13 @@ try:
 except ImportError:
     _HAS_PIL = False
 
+# публічний, без підкреслення -- щоб mission_page.py міг перевірити ДО
+# побудови UI, чи буде доступний масштабований (render_tiles_fit) режим,
+# і зібрати відповідний варіант канваса (без скролбарів) чи старий
+# (зі скролбарами, нативний розмір тайлів) -- а не з'ясовувати це вже
+# по факту кривого рендеру, як щойно сталося.
+HAS_PIL = _HAS_PIL
+
 
 def _decode_tile_image(data: bytes):
     """Возвращает PhotoImage, пригодный для canvas.create_image, либо None."""
@@ -180,6 +187,160 @@ def render_tiles(
     return found, total, missing, undecodable
 
 
+def _compose_scaled_fit(tiles: dict, tx_min: int, tx_max: int, ty_min: int, ty_max: int,
+                        target_w: int, target_h: int, bg_color: str = "#e8e8e8"):
+    """
+    Збирає тайли в одну мозаїку і масштабує РІВНОМІРНО (один коефіцієнт
+    для X і Y, "letterbox"/"contain", без спотворення пропорцій) під
+    (target_w, target_h) -- реальний розмір канваса. Той самий прийом,
+    що й у overview_map.py для карт на сторінці "Аналіз" -- тут окрема
+    копія навмисно (map_view.py не повинен залежати від overview_map.py
+    і навпаки, щоб зміни в інтерактивній карті не чіпали read-only
+    огляди, див. докстрінг overview_map.py).
+    Повертає (PhotoImage, scale, offset_x, offset_y) або None, якщо
+    Pillow не встановлено (тоді викликач має намалювати тайли в
+    натуральну величину зі скролом як fallback).
+    """
+    if not _HAS_PIL:
+        return None
+
+    grid_w = (tx_max - tx_min + 1) * TILE_SIZE
+    grid_h = (ty_max - ty_min + 1) * TILE_SIZE
+
+    mosaic = Image.new("RGB", (grid_w, grid_h), "#cccccc")
+    for tx in range(tx_min, tx_max + 1):
+        for ty in range(ty_min, ty_max + 1):
+            data = tiles.get((tx, ty))
+            if not data:
+                continue
+            try:
+                tile_img = Image.open(io.BytesIO(data)).convert("RGB")
+            except Exception:
+                continue
+            px = (tx - tx_min) * TILE_SIZE
+            py = (ty - ty_min) * TILE_SIZE
+            mosaic.paste(tile_img, (px, py))
+
+    target_w = max(int(target_w), 1)
+    target_h = max(int(target_h), 1)
+    scale = min(target_w / grid_w, target_h / grid_h)
+    draw_w = max(int(grid_w * scale), 1)
+    draw_h = max(int(grid_h * scale), 1)
+    resized = mosaic.resize((draw_w, draw_h), Image.LANCZOS)
+
+    canvas_img = Image.new("RGB", (target_w, target_h), bg_color)
+    offset_x = (target_w - draw_w) // 2
+    offset_y = (target_h - draw_h) // 2
+    canvas_img.paste(resized, (offset_x, offset_y))
+
+    photo = ImageTk.PhotoImage(canvas_img)
+    return photo, scale, offset_x, offset_y
+
+
+def _compose_scaled_width(tiles: dict, tx_min: int, tx_max: int, ty_min: int, ty_max: int,
+                          target_w: int):
+    """
+    Збирає тайли в одну мозаїку і масштабує ЛИШЕ по ширині (scale =
+    target_w / grid_w) -- на відміну від _compose_scaled_fit (contain,
+    підганяє під МЕНШУ зі сторін target_w/target_h), тут висота ніяк не
+    обмежується. Навмисно: якщо висоти вікна фізично не вистачає під
+    "правильну" висоту для даної ширини (реальний випадок -- вікно
+    ширше, ніж високе), contain-fit підганяв би під куций залишок
+    висоти і лишав сірі поля З БОКІВ -- а ширина екрана важливіша.
+    Тут ширина ЗАВЖДИ точно target_w, висота -- яка вийде; якщо вона
+    більша за видиму область канваса, для цього лишається вертикальний
+    скролбар (див. render_tiles_fit).
+    Повертає (PhotoImage, scale) або None, якщо Pillow не встановлено.
+    """
+    if not _HAS_PIL:
+        return None
+
+    grid_w = (tx_max - tx_min + 1) * TILE_SIZE
+    grid_h = (ty_max - ty_min + 1) * TILE_SIZE
+
+    mosaic = Image.new("RGB", (grid_w, grid_h), "#cccccc")
+    for tx in range(tx_min, tx_max + 1):
+        for ty in range(ty_min, ty_max + 1):
+            data = tiles.get((tx, ty))
+            if not data:
+                continue
+            try:
+                tile_img = Image.open(io.BytesIO(data)).convert("RGB")
+            except Exception:
+                continue
+            px = (tx - tx_min) * TILE_SIZE
+            py = (ty - ty_min) * TILE_SIZE
+            mosaic.paste(tile_img, (px, py))
+
+    target_w = max(int(target_w), 1)
+    scale = target_w / grid_w
+    draw_w = target_w
+    draw_h = max(int(grid_h * scale), 1)
+    resized = mosaic.resize((draw_w, draw_h), Image.LANCZOS)
+
+    photo = ImageTk.PhotoImage(resized)
+    return photo, scale
+
+
+def render_tiles_fit(
+    canvas: tk.Canvas,
+    analyzer: MissionAnalyzer,
+    zoom: int,
+    tx_min: int, tx_max: int, ty_min: int, ty_max: int,
+    tiles: dict,
+    image_refs: list,
+    overlay_polygons: list | None = None,
+) -> tuple[int, int, int, int]:
+    """
+    Те саме, що render_tiles, але карта масштабується ТОЧНО ПО ШИРИНІ
+    канваса (як на сторінці "Аналіз", тільки без обмеження по висоті --
+    див. _compose_scaled_width). Завдяки цьому карта завжди рівно на
+    ширину вікна незалежно від того, скільки висоти реально лишилось
+    (висота вікна -- це те, що не можна "домовити" підгонкою розміру
+    контейнера, як показала спроба з self._map_aspect_ratio).
+
+    Якщо Pillow не встановлено -- тихо повертається до старої поведінки
+    (render_tiles, натуральний розмір + скрол), бо без Pillow нема чим
+    масштабувати мозаїку тайлів.
+    """
+    canvas.update_idletasks()
+    W = max(canvas.winfo_width(), 100)
+
+    composed = _compose_scaled_width(tiles, tx_min, tx_max, ty_min, ty_max, W)
+    if composed is None:
+        # немає Pillow -- масштабувати нема чим, малюємо як раніше
+        return render_tiles(
+            canvas, analyzer, zoom, tx_min, tx_max, ty_min, ty_max, tiles, image_refs,
+            overlay_polygons=overlay_polygons,
+        )
+
+    canvas.delete("all")
+    image_refs.clear()
+
+    photo, scale = composed
+    image_refs.append(photo)
+    canvas.create_image(0, 0, image=photo, anchor="nw")
+
+    found = sum(1 for v in tiles.values() if v is not None)
+    total = (tx_max - tx_min + 1) * (ty_max - ty_min + 1)
+    missing = total - found
+    undecodable = 0  # PIL сам мовчки пропускає нечитані тайли в мозаїці -- рахуємо як "відсутні"
+
+    origin_x = tx_min * TILE_SIZE
+    origin_y = ty_min * TILE_SIZE
+
+    if overlay_polygons:
+        _draw_polygon_overlay(canvas, overlay_polygons, zoom, origin_x, origin_y, scale=scale)
+
+    _draw_route(canvas, analyzer, zoom, origin_x, origin_y, scale=scale)
+
+    draw_w = photo.width()
+    draw_h = photo.height()
+    canvas.config(scrollregion=(0, 0, draw_w, draw_h))
+
+    return found, total, missing, undecodable
+
+
 def _draw_polygon_overlay(
     canvas: tk.Canvas,
     polygons: list,
@@ -188,11 +349,18 @@ def _draw_polygon_overlay(
     origin_y: float,
     color: str = "#cc2222",
     stipple: str = "gray25",
+    scale: float = 1.0,
+    offset_x: float = 0.0,
+    offset_y: float = 0.0,
 ):
     """
     Рисует список полигонов (см. occupied_layer.extract_polygons) поверх
     тайлов. Дырки в полигонах игнорируются (только внешний контур) — это
     для общей наглядности, не для точных измерений границы.
+
+    scale/offset_x/offset_y -- те саме масштабування "letterbox", що й
+    для тайлів у render_tiles_fit (за замовчуванням 1.0/0/0 -- без змін,
+    для старого render_tiles із натуральним розміром).
     """
     for poly in polygons:
         if not poly:
@@ -203,13 +371,19 @@ def _draw_polygon_overlay(
         flat = []
         for lon, lat in outer_ring:
             px, py = lonlat_to_pixel(lat, lon, zoom)
-            flat.extend([px - origin_x, py - origin_y])
+            flat.extend([(px - origin_x) * scale + offset_x, (py - origin_y) * scale + offset_y])
         canvas.create_polygon(*flat, fill=color, outline=color, stipple=stipple, width=1)
 
 
 def _draw_route(
-    canvas: tk.Canvas, analyzer: MissionAnalyzer, zoom: int, origin_x: float, origin_y: float
+    canvas: tk.Canvas, analyzer: MissionAnalyzer, zoom: int, origin_x: float, origin_y: float,
+    scale: float = 1.0, offset_x: float = 0.0, offset_y: float = 0.0,
 ) -> list[tuple[float, float]]:
+    """
+    scale/offset_x/offset_y -- те саме масштабування "letterbox", що й
+    для тайлів у render_tiles_fit (за замовчуванням 1.0/0/0 -- без змін,
+    для старого render_tiles із натуральним розміром).
+    """
     issues_by_wp: dict[int, list[str]] = {}
     for it in analyzer.issues:
         issues_by_wp.setdefault(it["wp_index"], []).append(it["type"])
@@ -217,7 +391,7 @@ def _draw_route(
     route_px = []
     for wp in analyzer.nav_wps:
         gx, gy = lonlat_to_pixel(wp.lat, wp.lon, zoom)
-        route_px.append((gx - origin_x, gy - origin_y, wp))
+        route_px.append(((gx - origin_x) * scale + offset_x, (gy - origin_y) * scale + offset_y, wp))
 
     for i in range(len(route_px) - 1):
         x1, y1, _ = route_px[i]
