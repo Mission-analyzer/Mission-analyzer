@@ -7,15 +7,23 @@ Mission Analyzer — точка входа. Запуск:
 """
 
 import os
+import sys
 import tkinter as tk
 
-from version import VERSION
+from meta import VERSION
 
 SPLASH_DURATION_MS = 1300
 
 
 def _find_logo() -> str | None:
-    base = os.path.dirname(os.path.abspath(__file__))
+    # той самий bundled-asset-шлях, що й у App._find_asset (app.py) --
+    # у зібраному .exe це sys._MEIPASS (тека _internal), інакше --
+    # тека поруч з цим файлом. Не sys.executable: іконка/лого -- це
+    # ресурс, вкладений PyInstaller-ом у збірку, а не user-дані.
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    else:
+        base = os.path.dirname(os.path.abspath(__file__))
     for name in ("icon.png", "logo.png"):
         path = os.path.join(base, name)
         if os.path.isfile(path):
