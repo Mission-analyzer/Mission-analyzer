@@ -219,26 +219,20 @@ class AnalysisPageMixin:
         traj_map_box = ttk.LabelFrame(trajectory_inner, text="Маршрут — вигляд згори", height=460)
         traj_map_box.pack(fill="x", pady=(0, 8))
         traj_map_box.pack_propagate(False)
+        self._traj_map_box = traj_map_box
 
         # НЕ квадрат (на відміну від add_map_block вище/нижче -- ті
         # показують фіксовану площу 4x4 км навколо однієї точки, тому
         # квадрат для них і є правильною формою). Тут -- огляд усього
-        # маршруту, а його реальні пропорції визначає різниця макс./мін.
-        # довготи й макс./мін. широти (compute_tile_bounds), і вони
-        # рідко квадратні -- тому висота підганяється під ширину блока
-        # ЩОРАЗУ в _on_trajectory_map_ready(), коли відомі реальні межі.
-        self._trajectory_map_aspect_ratio = 4 / 3  # запасне значення до першого _load_trajectory_map()
-
-        def _keep_traj_aspect(event, _box=traj_map_box):
-            if event.width > 20:
-                target_h = max(200, int(event.width / self._trajectory_map_aspect_ratio))
-                if abs(event.height - target_h) > 2:
-                    _box.configure(height=target_h)
-
-        traj_map_box.bind("<Configure>", _keep_traj_aspect)
-        self._traj_map_box = traj_map_box
-
-        self.trajectory_map_canvas = tk.Canvas(traj_map_box, bg="#cccccc", highlightthickness=0)
+        # маршруту, а render_route_overview масштабує мозаїку ЛИШЕ по
+        # ширині блока (без спроб підігнати ВИСОТУ traj_map_box під
+        # пропорції маршруту -- це виявилось ненадійним: висота
+        # доступного місця не гумова, і при найменшому розбіжності
+        # "contain"-вписування лишало сірі поля по боках). Висота
+        # блока лишається фіксованою (460px за замовчуванням). Без
+        # власного скролбара -- як і решта карт на "Аналіз" (add_map_block
+        # вище/нижче), прокрутка тільки одна, зовнішня, для всієї вкладки.
+        self.trajectory_map_canvas = tk.Canvas(traj_map_box, bg="#cccccc", highlightthickness=0, bd=0)
         self.trajectory_map_canvas.pack(fill="both", expand=True)
         bind_pan(self.trajectory_map_canvas)
         self._trajectory_map_params = None  # кеш (tiles, zoom, bounds) -- для перемальовки без повторного фетчу
@@ -247,10 +241,21 @@ class AnalysisPageMixin:
             if self._trajectory_map_params is None:
                 return
             tiles, zoom, tx_min, tx_max, ty_min, ty_max = self._trajectory_map_params
-            render_route_overview(
+            img_w, img_h = render_route_overview(
                 self.trajectory_map_canvas, self.analyzer, zoom,
                 tx_min, tx_max, ty_min, ty_max, tiles, self._trajectory_map_images,
             )
+            # traj_map_box росте під реальну висоту карти при поточній
+            # ширині -- вкладка "Маршрут" сама прокручується зовні
+            # (make_scroll_tab), тому зайва висота тут не проблема, на
+            # відміну від "Місія", де немає зовнішньої прокрутки сторінки.
+            # верхня межа -- запобіжник від абсурдно високих зображень
+            # для маршрутів з екстремальним співвідношенням сторін
+            # (величезний діапазон широти при мізерному діапазоні
+            # довготи чи навпаки) -- тоді просто лишається трохи більше
+            # для прокрутки, ніж поміщається на екран, це прийнятний
+            # компроміс порівняно з десятками тисяч пікселів висоти
+            traj_map_box.configure(height=min(1600, max(200, img_h)))
 
         self._trajectory_map_images = []
         self.trajectory_map_canvas.bind("<Configure>", _on_traj_map_configure)
@@ -1089,22 +1094,16 @@ class AnalysisPageMixin:
 
     def _on_trajectory_map_ready(self, tiles, zoom, tx_min, tx_max, ty_min, ty_max):
         self._trajectory_map_params = (tiles, zoom, tx_min, tx_max, ty_min, ty_max)
-
-        # той самий підхід, що й у render_map() на "Місія": форма блоку =
-        # реальні пропорції маршруту (діапазон тайлів по X відносно
-        # діапазону по Y), підганяємо ДО відмальовки, щоб не було стрибка
-        # розміру вже після того, як карта намалювалась.
-        grid_w_tiles = tx_max - tx_min + 1
-        grid_h_tiles = ty_max - ty_min + 1
-        self._trajectory_map_aspect_ratio = grid_w_tiles / grid_h_tiles
-        self._traj_map_box.update_idletasks()
-        cur_w = max(self._traj_map_box.winfo_width(), 1)
-        target_h = max(200, int(cur_w / self._trajectory_map_aspect_ratio))
-        self._traj_map_box.configure(height=target_h)
-
-        render_route_overview(
+        img_w, img_h = render_route_overview(
             self.trajectory_map_canvas, self.analyzer, zoom,
             tx_min, tx_max, ty_min, ty_max, tiles, self._trajectory_map_images,
         )
+        # верхня межа -- запобіжник від абсурдно високих зображень
+        # для маршрутів з екстремальним співвідношенням сторін
+        # (величезний діапазон широти при мізерному діапазоні
+        # довготи чи навпаки) -- тоді просто лишається трохи більше
+        # для прокрутки, ніж поміщається на екран, це прийнятний
+        # компроміс порівняно з десятками тисяч пікселів висоти
+        self._traj_map_box.configure(height=min(1600, max(200, img_h)))
 
 
