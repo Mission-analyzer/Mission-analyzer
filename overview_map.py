@@ -90,6 +90,53 @@ def _compose_scaled(tiles: dict, tx_min: int, tx_max: int, ty_min: int, ty_max: 
     return photo, target_w / grid_w, target_h / grid_h
 
 
+def _compose_scaled_fit(tiles: dict, tx_min: int, tx_max: int, ty_min: int, ty_max: int,
+                        target_w: int, target_h: int, bg_color: str = "#e8e8e8"):
+    """
+    Те саме, що _compose_scaled, але масштабує РІВНОМІРНО (один
+    коефіцієнт для X і Y, "letterbox"/"contain"), без спотворення
+    пропорцій. Потрібно там, де геометрична область НЕ квадратна за
+    задумом (напр. bounding box усього маршруту -- compute_tile_bounds,
+    на відміну від compute_area_tile_bounds, який завжди робить
+    квадрат 4×4 км) -- інакше карта виглядає розтягнутою.
+    Повертає (PhotoImage, scale, offset_x, offset_y) або None.
+    """
+    if not _HAS_PIL:
+        return None
+
+    grid_w = (tx_max - tx_min + 1) * TILE_SIZE
+    grid_h = (ty_max - ty_min + 1) * TILE_SIZE
+
+    mosaic = Image.new("RGB", (grid_w, grid_h), "#cccccc")
+    for tx in range(tx_min, tx_max + 1):
+        for ty in range(ty_min, ty_max + 1):
+            data = tiles.get((tx, ty))
+            if not data:
+                continue
+            try:
+                tile_img = Image.open(io.BytesIO(data)).convert("RGB")
+            except Exception:
+                continue
+            px = (tx - tx_min) * TILE_SIZE
+            py = (ty - ty_min) * TILE_SIZE
+            mosaic.paste(tile_img, (px, py))
+
+    target_w = max(int(target_w), 1)
+    target_h = max(int(target_h), 1)
+    scale = min(target_w / grid_w, target_h / grid_h)
+    draw_w = max(int(grid_w * scale), 1)
+    draw_h = max(int(grid_h * scale), 1)
+    resized = mosaic.resize((draw_w, draw_h), Image.LANCZOS)
+
+    canvas_img = Image.new("RGB", (target_w, target_h), bg_color)
+    offset_x = (target_w - draw_w) // 2
+    offset_y = (target_h - draw_h) // 2
+    canvas_img.paste(resized, (offset_x, offset_y))
+
+    photo = ImageTk.PhotoImage(canvas_img)
+    return photo, scale, offset_x, offset_y
+
+
 def _draw_tiles(canvas: tk.Canvas, tiles: dict, image_refs: list,
                 tx_min: int, tx_max: int, ty_min: int, ty_max: int,
                 origin_x: float, origin_y: float):
@@ -188,6 +235,48 @@ def render_area_map(canvas: tk.Canvas, lat: float, lon: float, zoom: int,
     canvas.config(scrollregion=(0, 0, W, H))
 
 
+def _compose_scaled_width(tiles: dict, tx_min: int, tx_max: int, ty_min: int, ty_max: int,
+                          target_w: int):
+    """
+    Те саме, що _compose_scaled_fit, але масштабує ЛИШЕ по ширині
+    (scale = target_w / grid_w), без обмеження по висоті. Contain-fit
+    (_compose_scaled_fit) підганяє під МЕНШУ зі сторін target_w/target_h
+    -- якщо контейнер хоч трохи ширший за реальні пропорції маршруту
+    (a так майже завжди, бо вгадати точну висоту наперед неможливо),
+    висота "перемагає", і по боках лишається сірий letterbox. Тут
+    ширина ЗАВЖДИ точно target_w; якщо висота вийде більшою за видиму
+    область канваса -- для цього є вертикальний скролбар (як на "Місія").
+    Повертає (PhotoImage, scale) або None, якщо Pillow не встановлено.
+    """
+    if not _HAS_PIL:
+        return None
+
+    grid_w = (tx_max - tx_min + 1) * TILE_SIZE
+    grid_h = (ty_max - ty_min + 1) * TILE_SIZE
+
+    mosaic = Image.new("RGB", (grid_w, grid_h), "#cccccc")
+    for tx in range(tx_min, tx_max + 1):
+        for ty in range(ty_min, ty_max + 1):
+            data = tiles.get((tx, ty))
+            if not data:
+                continue
+            try:
+                tile_img = Image.open(io.BytesIO(data)).convert("RGB")
+            except Exception:
+                continue
+            px = (tx - tx_min) * TILE_SIZE
+            py = (ty - ty_min) * TILE_SIZE
+            mosaic.paste(tile_img, (px, py))
+
+    target_w = max(int(target_w), 1)
+    scale = target_w / grid_w
+    draw_h = max(int(grid_h * scale), 1)
+    resized = mosaic.resize((target_w, draw_h), Image.LANCZOS)
+
+    photo = ImageTk.PhotoImage(resized)
+    return photo, scale
+
+
 def render_route_overview(canvas: tk.Canvas, analyzer: MissionAnalyzer, zoom: int,
                           tx_min: int, tx_max: int, ty_min: int, ty_max: int,
                           tiles: dict, image_refs: list):
@@ -196,25 +285,31 @@ def render_route_overview(canvas: tk.Canvas, analyzer: MissionAnalyzer, zoom: in
     Read-only: лінія маршруту + точки, БЕЗ панелі керування зумом і БЕЗ
     можливості перетягувати/редагувати точки (на відміну від майбутнього
     редактора місій на сторінці «Місія» -- це навмисно окрема функція).
+
+    Масштабується ЛИШЕ по ширині (_compose_scaled_width) -- як і на
+    сторінці "Місія": контейнер більше не намагається підлаштувати
+    власну висоту під пропорції маршруту (це ненадійно -- висота вікна
+    не гумова), тому carta завжди рівно на ширину блока, без сірих
+    полів по боках.
     """
     canvas.delete("all")
     image_refs.clear()
 
     canvas.update_idletasks()
     W = max(canvas.winfo_width(), 100)
-    H = max(canvas.winfo_height(), 100)
 
     origin_x = tx_min * TILE_SIZE
     origin_y = ty_min * TILE_SIZE
 
-    composed = _compose_scaled(tiles, tx_min, tx_max, ty_min, ty_max, W, H)
+    composed = _compose_scaled_width(tiles, tx_min, tx_max, ty_min, ty_max, W)
     if composed:
-        photo, scale_x, scale_y = composed
+        photo, scale = composed
         image_refs.append(photo)
         canvas.create_image(0, 0, image=photo, anchor="nw")
     else:
         _draw_tiles(canvas, tiles, image_refs, tx_min, tx_max, ty_min, ty_max, origin_x, origin_y)
-        scale_x = scale_y = 1.0
+        scale = 1.0
+    offset_x = offset_y = 0
 
     issues_by_wp: dict[int, list[str]] = {}
     for it in analyzer.issues:
@@ -223,7 +318,7 @@ def render_route_overview(canvas: tk.Canvas, analyzer: MissionAnalyzer, zoom: in
     route_px = []
     for wp in analyzer.nav_wps:
         gx, gy = lonlat_to_pixel(wp.lat, wp.lon, zoom)
-        route_px.append(((gx - origin_x) * scale_x, (gy - origin_y) * scale_y, wp))
+        route_px.append(((gx - origin_x) * scale + offset_x, (gy - origin_y) * scale + offset_y, wp))
 
     for i in range(len(route_px) - 1):
         x1, y1, _ = route_px[i]
@@ -235,4 +330,11 @@ def render_route_overview(canvas: tk.Canvas, analyzer: MissionAnalyzer, zoom: in
         canvas.create_oval(x - 6, y - 6, x + 6, y + 6, fill=color, outline="white", width=1)
         canvas.create_text(x, y - 12, text=str(wp.index), font=("Arial", 8, "bold"))
 
-    canvas.config(scrollregion=(0, 0, W, H))
+    if composed:
+        canvas.config(scrollregion=(0, 0, photo.width(), photo.height()))
+        return photo.width(), photo.height()
+    else:
+        grid_w = (tx_max - tx_min + 1) * TILE_SIZE
+        grid_h = (ty_max - ty_min + 1) * TILE_SIZE
+        canvas.config(scrollregion=(0, 0, grid_w, grid_h))
+        return grid_w, grid_h
