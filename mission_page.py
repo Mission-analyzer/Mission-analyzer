@@ -143,7 +143,7 @@ class MissionPageMixin:
         map_canvas_frame.rowconfigure(0, weight=1)
         map_canvas_frame.columnconfigure(0, weight=1)
 
-        self.map_canvas = tk.Canvas(map_canvas_frame, bg="#dddddd")
+        self.map_canvas = tk.Canvas(map_canvas_frame, bg="#dddddd", highlightthickness=0, bd=0)
         map_vbar = ttk.Scrollbar(map_canvas_frame, orient="vertical", command=self.map_canvas.yview)
         self.map_canvas.configure(yscrollcommand=map_vbar.set)
 
@@ -754,6 +754,12 @@ class MissionPageMixin:
                 messagebox.showwarning(i18n.t("msg_no_points_title"), i18n.t("msg_no_points_body"))
                 return
             self.zoom_var.set(zoom)
+            # окреме поле, яке НЕ чіпається подальшою ручною прокруткою
+            # колесом миші на "Місія" (та лише крутить self.zoom_var) --
+            # саме це значення "Маршрут" на "Аналіз" бере як своє, щоб не
+            # рахувати зум заново під власний канвас і не залежати від
+            # того, як користувач потім покрутив зум на "Місія".
+            self._initial_auto_zoom = zoom
             tx_min, tx_max, ty_min, ty_max, total = compute_tile_bounds(self.analyzer, zoom)
         else:
             zoom = int(self.zoom_var.get())
