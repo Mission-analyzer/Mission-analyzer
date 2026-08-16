@@ -1063,23 +1063,23 @@ class AnalysisPageMixin:
 
 
     def _load_trajectory_map(self):
-        """Завантажує карту всього маршруту для вкладки «Траєкторія» -- та
-        сама логіка, що й render_map() на «Місія» (compute_tile_bounds/
-        fetch_tiles/render_tiles), тільки малює в окремий канвас."""
+        """Завантажує карту всього маршруту для вкладки «Траєкторія».
+
+        Зум -- саме той, що автоматично порахувався один раз при
+        завантаженні місії на "Місія" (self._initial_auto_zoom,
+        встановлюється в render_map(auto_zoom=True) в mission_page.py),
+        а не self.zoom_var (те можна покрутити вручну колесом миші на
+        "Місія" вже ПІСЛЯ завантаження -- "Маршрут" на це реагувати не
+        повинен) і не окремий підбір під власний канвас (просто зайва
+        складність без потреби).
+        """
         if self.analyzer is None or not hasattr(self, "trajectory_map_canvas"):
             return
 
-        zoom = int(self.zoom_var.get())
-        try:
-            tx_min, tx_max, ty_min, ty_max, total = compute_tile_bounds(self.analyzer, zoom)
-        except MapTooLargeError:
-            safe_zoom = self._find_safe_zoom(zoom)
-            if safe_zoom is None:
-                return
-            zoom = safe_zoom
-            tx_min, tx_max, ty_min, ty_max, total = compute_tile_bounds(self.analyzer, zoom)
-        except ValueError:
-            return
+        zoom = getattr(self, "_initial_auto_zoom", None)
+        if zoom is None:
+            zoom = int(self.zoom_var.get())
+        tx_min, tx_max, ty_min, ty_max, total = compute_tile_bounds(self.analyzer, zoom)
 
         if self.tile_cache is None:
             disk_cache = self.tilecache_var.get().strip() or None
