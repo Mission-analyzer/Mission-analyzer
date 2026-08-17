@@ -334,6 +334,209 @@ _TR: dict[str, dict[str, str]] = {
         "uk": "Немає даних висоти для точки ({lat:.5f}, {lon:.5f})",
         "en": "No elevation data for point ({lat:.5f}, {lon:.5f})",
     },
+
+    # --- сторінка "Місія": підключення до ArduPilot по MAVLink ---
+    "btn_connect": {"uk": "Підєднатись", "en": "Connect"},
+    "btn_disconnect": {"uk": "Роз'єднати", "en": "Disconnect"},
+    "status_connecting": {"uk": "Підключення...", "en": "Connecting..."},
+    "msg_choose_port_body": {"uk": "Оберіть порт підключення", "en": "Choose a connection port"},
+    "msg_bad_baud_body": {"uk": "Некоректна швидкість обміну", "en": "Invalid baud rate"},
+    "msg_connect_failed_body_fmt": {
+        "uk": "Не вдалося підключитись до {port} @ {baud}",
+        "en": "Could not connect to {port} @ {baud}",
+    },
+    "status_connected_fmt": {"uk": "Підключено: {port} @ {baud}", "en": "Connected: {port} @ {baud}"},
+    "status_downloading_mission": {
+        "uk": "Завантаження місії з борту...",
+        "en": "Downloading mission from the aircraft...",
+    },
+    "status_analyzing": {"uk": "Аналіз місії...", "en": "Analyzing mission..."},
+    "status_uploading_mission": {
+        "uk": "Запис місії на борт...",
+        "en": "Uploading mission to the aircraft...",
+    },
+    "status_mission_uploaded": {"uk": "Місію записано на борт", "en": "Mission uploaded to the aircraft"},
+    "msg_mission_uploaded_body": {
+        "uk": "Місію успішно завантажено на борт ArduPilot",
+        "en": "Mission successfully uploaded to ArduPilot",
+    },
+    "msg_action_failed_body": {"uk": "{action} не вдалося:\n{error}", "en": "{action} failed:\n{error}"},
+    "action_download": {"uk": "Завантаження", "en": "Download"},
+    "action_write": {"uk": "Запис", "en": "Write"},
+
+    # --- сторінка "Аналіз" ---
+    "label_flight_date": {"uk": "Дата польоту:", "en": "Flight date:"},
+    "label_departure_time": {"uk": "Час вильоту (UTC):", "en": "Departure time (UTC):"},
+    "label_arrival_time": {"uk": "Прибуття (UTC):", "en": "Arrival (UTC):"},
+    "btn_get_weather": {"uk": "Отримати метео", "en": "Get weather"},
+    "hint_press_get_weather": {
+        "uk": "Натисніть «Отримати метео», щоб побачити аналіз місії",
+        "en": 'Press "Get weather" to see the mission analysis',
+    },
+    "box_takeoff_profile": {"uk": "Профіль висоти — зліт", "en": "Elevation profile — takeoff"},
+    "box_route_top_view": {"uk": "Маршрут — вигляд згори", "en": "Route — top view"},
+    "box_glide_chart": {"uk": "Графік глісади", "en": "Glide slope chart"},
+    "btn_save_pdf": {"uk": "Зберегти PDF", "en": "Save PDF"},
+    "dlg_save_report_title": {"uk": "Зберегти звіт аналізу", "en": "Save analysis report"},
+    "msg_pdf_save_failed_body": {
+        "uk": "Не вдалося зберегти PDF:\n{error}",
+        "en": "Could not save PDF:\n{error}",
+    },
+    "msg_weather_title": {"uk": "Метео", "en": "Weather"},
+    "msg_load_mission_first_body": {"uk": "Спочатку завантажте місію", "en": "Load a mission first"},
+    "msg_set_flight_date_body": {
+        "uk": "Вкажіть дату польоту (наприклад: 2026-08-10)",
+        "en": "Enter the flight date (e.g. 2026-08-10)",
+    },
+    "msg_set_departure_time_body": {
+        "uk": "Оберіть час вильоту -- без нього неможливо отримати погоду і карта не відмалюється",
+        "en": "Choose a departure time -- without it the weather can't be fetched and the map won't render",
+    },
+    "msg_no_route_points_body": {"uk": "Немає точок маршруту", "en": "No route points"},
+    "tab_takeoff": {"uk": "Зліт", "en": "Takeoff"},
+    "tab_route": {"uk": "Маршрут", "en": "Route"},
+    "tab_landing_phase": {"uk": "Посадка", "en": "Landing"},
+    "hint_bad_speed": {"uk": "швидкість?", "en": "speed?"},
+
+    # --- сторінка "Конфігурація" ---
+    "label_cruise_speed": {"uk": "Крейсерська швидкість (м/с):", "en": "Cruise speed (m/s):"},
+    "box_map_weather_services": {
+        "uk": "Картографічні та метеосервіси",
+        "en": "Map & weather services",
+    },
+
+    # --- сторінка "Довідка": перевірка оновлень ---
+    "btn_check_updates": {"uk": "Перевірити оновлення", "en": "Check for updates"},
+    "msg_update_title": {"uk": "Оновлення", "en": "Update"},
+    "msg_update_check_failed_body": {
+        "uk": "Не вдалося перевірити оновлення:\n{error}",
+        "en": "Could not check for updates:\n{error}",
+    },
+    "msg_latest_version_body": {
+        "uk": "У вас найновіша версія ({version}).",
+        "en": "You have the latest version ({version}).",
+    },
+    "status_checking_updates": {"uk": "Перевірка оновлень...", "en": "Checking for updates..."},
+    "status_up_to_date_fmt": {
+        "uk": "Встановлена версія актуальна ({version})",
+        "en": "Installed version is up to date ({version})",
+    },
+    "status_update_available_fmt": {
+        "uk": "Доступна нова версія: {tag}",
+        "en": "New version available: {tag}",
+    },
+    "msg_update_available_title": {"uk": "Доступне оновлення", "en": "Update available"},
+    "msg_update_available_body_fmt": {
+        "uk": "Доступна нова версія {tag} (зараз встановлено {current}).",
+        "en": "A new version {tag} is available (currently installed: {current}).",
+    },
+    "msg_update_whats_new": {"uk": "Що нового:", "en": "What's new:"},
+    "msg_update_confirm_install": {
+        "uk": "Завантажити і встановити зараз?",
+        "en": "Download and install now?",
+    },
+    "status_downloading_update_fmt": {"uk": "Завантаження {tag}...", "en": "Downloading {tag}..."},
+    "msg_update_install_failed_body": {
+        "uk": "Не вдалося встановити оновлення:\n{error}",
+        "en": "Could not install the update:\n{error}",
+    },
+    "status_update_installed": {
+        "uk": "Оновлено — перезапустіть програму",
+        "en": "Updated — please restart the program",
+    },
+    "msg_map_unavailable_fmt": {"uk": "Карта недоступна\n{error}", "en": "Map unavailable\n{error}"},
+    "msg_render_error_fmt": {"uk": "Помилка відмальовки:\n{error}", "en": "Rendering error:\n{error}"},
+
+    # --- сторінка "Конфігурація": сервіси карт/погоди ---
+    "label_occupied_layer": {"uk": "Шар окупованих територій:", "en": "Occupied-territories layer:"},
+    "label_windy_service": {"uk": "Windy (вітер, онлайн-карта):", "en": "Windy (wind, online map):"},
+    "label_openmeteo_service": {
+        "uk": "Open-Meteo (прогноз, безкоштовно):",
+        "en": "Open-Meteo (forecast, free):",
+    },
+    "label_gwa_service": {"uk": "Global Wind Atlas (кліматика):", "en": "Global Wind Atlas (climatology):"},
+
+    # --- погода: "Зліт"/"Посадка" на "Аналіз" (текстовий звіт) ---
+    "status_loading_weather": {"uk": "Завантаження метеоданих...", "en": "Loading weather data..."},
+    "msg_weather_fetch_error_fmt": {
+        "uk": "Помилка отримання метео:\n{error}",
+        "en": "Error fetching weather:\n{error}",
+    },
+    "label_start_takeoff": {"uk": "Старт (Зліт)", "en": "Start (Takeoff)"},
+    "weather_error_line_fmt": {"uk": "  Помилка: {error}", "en": "  Error: {error}"},
+    "weather_date_line_fmt": {"uk": "  Дата            : {date}", "en": "  Date            : {date}"},
+    "weather_sunrise_line_fmt": {
+        "uk": "  Схід сонця      : {time}",
+        "en": "  Sunrise         : {time}",
+    },
+    "weather_sunset_line_fmt": {"uk": "  Захід сонця     : {time}", "en": "  Sunset          : {time}"},
+    "weather_temp_minmax_line_fmt": {
+        "uk": "  Темп. (min/max) : {t_min}°C / {t_max}°C",
+        "en": "  Temp. (min/max) : {t_min}°C / {t_max}°C",
+    },
+    "weather_wind_max_line_fmt": {
+        "uk": "  Вітер макс.     : {speed} км/год, напрямок {dir}°",
+        "en": "  Max wind        : {speed} km/h, direction {dir}°",
+    },
+    "weather_at_time_header_fmt": {"uk": "  — На {time} UTC —", "en": "  — At {time} UTC —"},
+    "weather_wind_speed_line_fmt": {
+        "uk": "  Швидкість вітру : {speed} км/год",
+        "en": "  Wind speed      : {speed} km/h",
+    },
+    "weather_wind_dir_line_fmt": {"uk": "  Напрямок вітру  : {dir}°", "en": "  Wind direction  : {dir}°"},
+    "weather_temp_line_fmt": {"uk": "  Температура     : {temp}°C", "en": "  Temperature     : {temp}°C"},
+    "weather_strong_word": {"uk": "⚠ сильний", "en": "⚠ strong"},
+    "weather_normal_word": {"uk": "норма", "en": "normal"},
+    "weather_crosswind_line_fmt": {
+        "uk": "  Боковий вітер   : {cross:.0f}°  ({strength})",
+        "en": "  Crosswind       : {cross:.0f}°  ({strength})",
+    },
+    "weather_headwind_yes": {"uk": "так ✓ (добре)", "en": "yes ✓ (good)"},
+    "weather_headwind_no": {"uk": "ні (попутний)", "en": "no (tailwind)"},
+    "weather_headwind_line_fmt": {
+        "uk": "  Зустрічний вітер: {value}",
+        "en": "  Headwind        : {value}",
+    },
+    "weather_hourly_unavailable_fmt": {
+        "uk": "  Погодинні дані на {time} UTC: недоступні",
+        "en": "  Hourly data for {time} UTC: unavailable",
+    },
+
+    # --- PDF-звіт: заголовки та запасні тексти ---
+    "pdf_title": {"uk": "Звіт аналізу місії — Mission Analyzer", "en": "Mission analysis report — Mission Analyzer"},
+    "pdf_mission_file_fmt": {"uk": "Файл місії: {file}", "en": "Mission file: {file}"},
+    "pdf_flight_info_fmt": {
+        "uk": "Дата польоту: {date}   Час вильоту (UTC): {time}   Прибуття: {arrival}",
+        "en": "Flight date: {date}   Departure time (UTC): {time}   Arrival: {arrival}",
+    },
+    "pdf_heading_takeoff_weather": {"uk": "Зліт — погода в точці старту", "en": "Takeoff — weather at start point"},
+    "msg_no_data_press_weather": {
+        "uk": "Немає даних (натисніть «Отримати метео»).",
+        "en": 'No data (press "Get weather").',
+    },
+    "pdf_heading_route_map": {"uk": "Маршрут — карта", "en": "Route — map"},
+    "pdf_heading_route_elevation": {"uk": "Маршрут — графік висоти", "en": "Route — elevation profile"},
+    "pdf_no_remarks": {"uk": "Без зауважень.", "en": "No remarks."},
+    "pdf_heading_route_angle": {"uk": "Маршрут — кут траєкторії", "en": "Route — flight path angle"},
+    "pdf_heading_landing": {
+        "uk": "Посадка — проблеми та погода посадки",
+        "en": "Landing — issues and landing weather",
+    },
+    "msg_no_remarks_glide": {"uk": "Без зауважень по глісаді.", "en": "No remarks on the glide slope."},
+    "dlg_pick_date_title": {"uk": "Дата польоту", "en": "Flight date"},
+    "calendar_day_names": {"uk": "Пн,Вт,Ср,Чт,Пт,Сб,Нд", "en": "Mo,Tu,We,Th,Fr,Sa,Su"},
+    "label_minutes_suffix_fmt": {"uk": "{time} (+{mins} хв)", "en": "{time} (+{mins} min)"},
+    "msg_map_load_error_fmt": {
+        "uk": "Помилка завантаження карти:\n{error}",
+        "en": "Map loading error:\n{error}",
+    },
+    "box_takeoff_area": {"uk": "Старт — 4×4 км", "en": "Start — 4×4 km"},
+    "box_landing_area": {"uk": "Посадка — 4×4 км", "en": "Landing — 4×4 km"},
+    "msg_reportlab_missing_title": {"uk": "PDF", "en": "PDF"},
+    "msg_reportlab_missing_body": {
+        "uk": "Для збереження в PDF потрібна бібліотека reportlab.\n\nВстановіть її командою:\n    pip install reportlab",
+        "en": "Saving to PDF requires the reportlab library.\n\nInstall it with:\n    pip install reportlab",
+    },
 }
 
 
