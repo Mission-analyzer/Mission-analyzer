@@ -37,7 +37,7 @@ class ConfigPageMixin:
         ttk.Label(opts, text=i18n.t("label_turn_min")).grid(row=0, column=2, sticky="w", padx=(16, 6))
         ttk.Entry(opts, textvariable=self.turn_min_var, width=8).grid(row=0, column=3, sticky="w")
 
-        ttk.Label(opts, text="Крейсерська швидкість (м/с):").grid(row=0, column=4, sticky="w", padx=(16, 6))
+        ttk.Label(opts, text=i18n.t("label_cruise_speed")).grid(row=0, column=4, sticky="w", padx=(16, 6))
         ttk.Entry(opts, textvariable=self.cruise_speed_var, width=6).grid(row=0, column=5, sticky="w")
 
         ttk.Checkbutton(opts, text=i18n.t("check_srtm"), variable=self.use_srtm_var).grid(
@@ -81,14 +81,14 @@ class ConfigPageMixin:
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(2, 4))
 
         # === Картографічні та метеосервіси ===
-        svc_frame = ttk.LabelFrame(page_config, text="Картографічні та метеосервіси")
+        svc_frame = ttk.LabelFrame(page_config, text=i18n.t("box_map_weather_services"))
         svc_frame.pack(fill="x", **pad)
 
         services = [
-            ("Шар окупованих територій:", self.url_occupied_var),
-            ("Windy (вітер, онлайн-карта):", self.url_windy_var),
-            ("Open-Meteo (прогноз, безкоштовно):", self.url_forecast_var),
-            ("Global Wind Atlas (кліматика):", self.url_gwa_var),
+            (i18n.t("label_occupied_layer"), self.url_occupied_var),
+            (i18n.t("label_windy_service"), self.url_windy_var),
+            (i18n.t("label_openmeteo_service"), self.url_forecast_var),
+            (i18n.t("label_gwa_service"), self.url_gwa_var),
         ]
         for row_i, (label, var) in enumerate(services):
             ttk.Label(svc_frame, text=label).grid(row=row_i, column=0, sticky="w", padx=6, pady=3)
