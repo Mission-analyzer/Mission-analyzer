@@ -88,4 +88,4 @@ python cleanup_srtm.py "шлях\до\папки\SRTM" --apply
 
 ## Ліцензія
 
-_TODO: додати LICENSE._
+*License: MIT — © 2026 Sergey Gorbachevsky*
