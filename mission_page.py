@@ -199,7 +199,7 @@ class MissionPageMixin:
         border = colors["border"]
 
         self.connect_btn = tk.Button(
-            parent, text="Підєднатись",
+            parent, text=i18n.t("btn_connect"),
             bg=idle_bg, fg=idle_fg, activebackground="#C9CFD6", activeforeground=idle_fg,
             font=("Segoe UI", 9, "bold"), bd=2, relief="groove", cursor="hand2",
             padx=idle_pad[0], pady=idle_pad[1],
@@ -232,15 +232,15 @@ class MissionPageMixin:
         port = self.port_var.get().strip()
         baud_txt = self.baud_var.get().strip()
         if not port:
-            messagebox.showwarning(i18n.t("msg_no_data_title"), "Оберіть порт підключення")
+            messagebox.showwarning(i18n.t("msg_no_data_title"), i18n.t("msg_choose_port_body"))
             return
         try:
             baud = int(baud_txt)
         except ValueError:
-            messagebox.showwarning(i18n.t("msg_no_data_title"), "Некоректна швидкість обміну")
+            messagebox.showwarning(i18n.t("msg_no_data_title"), i18n.t("msg_bad_baud_body"))
             return
 
-        self.connect_btn.configure(text="Підключення...", state="disabled")
+        self.connect_btn.configure(text=i18n.t("status_connecting"), state="disabled")
         threading.Thread(target=self._connect_worker, args=(port, baud), daemon=True).start()
 
 
@@ -266,18 +266,18 @@ class MissionPageMixin:
 
     def _on_connect_result(self, conn, error, port: str, baud: int):
         if conn is None or error:
-            self.connect_btn.configure(text="Підєднатись", state="normal", **self._connect_idle_style)
+            self.connect_btn.configure(text=i18n.t("btn_connect"), state="normal", **self._connect_idle_style)
             messagebox.showerror(
                 "MAVLink",
-                f"Не вдалося підключитись до {port} @ {baud}"
+                i18n.t("msg_connect_failed_body_fmt", port=port, baud=baud)
                 + (f":\n{error}" if error else ""),
             )
             return
 
         self._flight_conn = conn
-        self.connect_btn.configure(text="Роз'єднати", state="normal", **self._connect_active_style)
+        self.connect_btn.configure(text=i18n.t("btn_disconnect"), state="normal", **self._connect_active_style)
         self.connect_btn.update_idletasks()
-        self.status_var.set(f"Підключено: {port} @ {baud}")
+        self.status_var.set(i18n.t("status_connected_fmt", port=port, baud=baud))
         # показуємо кнопки Read/Write
         if hasattr(self, "_ardu_read_btn"):
             self._ardu_read_btn.pack(side="left", padx=(18, 0))
@@ -292,7 +292,7 @@ class MissionPageMixin:
             except Exception:
                 pass
             self._flight_conn = None
-        self.connect_btn.configure(text="Підєднатись", state="normal", **self._connect_idle_style)
+        self.connect_btn.configure(text=i18n.t("btn_connect"), state="normal", **self._connect_idle_style)
         self.status_var.set("")
         # ховаємо кнопки Read/Write
         if hasattr(self, "_ardu_read_btn") and self._ardu_btns_visible:
@@ -389,7 +389,7 @@ class MissionPageMixin:
 
     def _load_mission_from_mavlink(self):
         """Запрашивает місію з підключеного польотного контролера (MAVLink MISSION_REQUEST_LIST)."""
-        self.status_var.set("Завантаження місії з борту...")
+        self.status_var.set(i18n.t("status_downloading_mission"))
         self.connect_btn.configure(state="disabled")
         threading.Thread(target=self._mavlink_download_worker, daemon=True).start()
 
@@ -466,7 +466,7 @@ class MissionPageMixin:
 
             self.after(0, lambda: self._on_mavlink_mission_ready(tmp_path))
         except Exception as e:
-            self.after(0, lambda: self._on_mavlink_error("Завантаження", str(e)))
+            self.after(0, lambda: self._on_mavlink_error(i18n.t("action_download"), str(e)))
 
 
     def _on_mavlink_mission_ready(self, tmp_path: str):
@@ -488,7 +488,7 @@ class MissionPageMixin:
         # але без примусового update_idletasks() Tk не встигає її
         # перемалювати до того, як почнеться важкий analyze() нижче --
         # тому виглядає, ніби все "зависає" на кілька секунд
-        self.status_var.set("Аналіз місії...")
+        self.status_var.set(i18n.t("status_analyzing"))
         self.update_idletasks()
 
         # analyzer.analyze() -- це і сегментна перевірка AGL вздовж усієї
@@ -548,7 +548,7 @@ class MissionPageMixin:
 
     def _save_mission_to_mavlink(self):
         """Записує поточну місію на підключений польотний контролер (MAVLink MISSION_COUNT/ITEM)."""
-        self.status_var.set("Запис місії на борт...")
+        self.status_var.set(i18n.t("status_uploading_mission"))
         self.connect_btn.configure(state="disabled")
         threading.Thread(target=self._mavlink_upload_worker, daemon=True).start()
 
@@ -598,19 +598,19 @@ class MissionPageMixin:
 
             self.after(0, self._on_mavlink_upload_done)
         except Exception as e:
-            self.after(0, lambda: self._on_mavlink_error("Запис", str(e)))
+            self.after(0, lambda: self._on_mavlink_error(i18n.t("action_write"), str(e)))
 
 
     def _on_mavlink_upload_done(self):
         self.connect_btn.configure(state="normal")
-        self.status_var.set("Місію записано на борт")
-        messagebox.showinfo("MAVLink", "Місію успішно завантажено на борт ArduPilot")
+        self.status_var.set(i18n.t("status_mission_uploaded"))
+        messagebox.showinfo("MAVLink", i18n.t("msg_mission_uploaded_body"))
 
 
     def _on_mavlink_error(self, action: str, error: str):
         self.connect_btn.configure(state="normal")
         self.status_var.set("")
-        messagebox.showerror("MAVLink", f"{action} не вдалося:\n{error}")
+        messagebox.showerror("MAVLink", i18n.t("msg_action_failed_body", action=action, error=error))
 
 
     def _export_waypoints(self, path: str):
