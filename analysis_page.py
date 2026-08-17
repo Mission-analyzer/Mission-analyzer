@@ -47,7 +47,7 @@ class AnalysisPageMixin:
         flight_row = ttk.Frame(page_analysis)
         flight_row.pack(fill="x", **pad)
 
-        ttk.Label(flight_row, text="Дата польоту:").pack(side="left")
+        ttk.Label(flight_row, text=i18n.t("label_flight_date")).pack(side="left")
         self._date_btn = tk.Button(
             flight_row,
             textvariable=self.flight_date_var,
@@ -63,7 +63,7 @@ class AnalysisPageMixin:
             import datetime
             self.flight_date_var.set(datetime.date.today().strftime("%Y-%m-%d"))
 
-        ttk.Label(flight_row, text="Час вильоту (UTC):").pack(side="left")
+        ttk.Label(flight_row, text=i18n.t("label_departure_time")).pack(side="left")
         hours = [f"{h:02d}:00" for h in range(24)]
         hour_combo = ttk.Combobox(
             flight_row, textvariable=self.flight_time_var,
@@ -71,13 +71,13 @@ class AnalysisPageMixin:
         )
         hour_combo.pack(side="left", padx=(4, 16))
 
-        ttk.Label(flight_row, text="Прибуття (UTC):").pack(side="left")
+        ttk.Label(flight_row, text=i18n.t("label_arrival_time")).pack(side="left")
         self.arrival_time_var = tk.StringVar(value="—")
         ttk.Label(flight_row, textvariable=self.arrival_time_var,
                   font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
 
         ttk.Button(
-            flight_row, text="Отримати метео",
+            flight_row, text=i18n.t("btn_get_weather"),
             command=self._fetch_meteo,
         ).pack(side="left")
 
@@ -88,7 +88,7 @@ class AnalysisPageMixin:
         self.analysis_placeholder.pack(fill="both", expand=True, **pad)
         ttk.Label(
             self.analysis_placeholder,
-            text="Натисніть «Отримати метео», щоб побачити аналіз місії",
+            text=i18n.t("hint_press_get_weather"),
             font=("Segoe UI", 11),
             foreground="#888",
         ).pack(expand=True)
@@ -189,21 +189,21 @@ class AnalysisPageMixin:
             )
 
         # --- «Зліт» = текст (погода), карта, профіль висоти зльоту ---
-        takeoff_tab, takeoff_inner = make_scroll_tab("Зліт")
+        takeoff_tab, takeoff_inner = make_scroll_tab(i18n.t("tab_takeoff"))
         self.takeoff_weather_text = make_plain_text(takeoff_inner, height=8)
         self.takeoff_weather_text.pack(fill="x", pady=(0, 8))
-        add_map_block(takeoff_inner, "Старт — 4×4 км")
+        add_map_block(takeoff_inner, i18n.t("box_takeoff_area"))
 
-        takeoff_profile_box = ttk.LabelFrame(takeoff_inner, text="Профіль висоти — зліт")
+        takeoff_profile_box = ttk.LabelFrame(takeoff_inner, text=i18n.t("box_takeoff_profile"))
         takeoff_profile_box.pack(fill="x", pady=(0, 8))
         self.takeoff_profile_canvas = tk.Canvas(takeoff_profile_box, bg="white", height=280)
         self.takeoff_profile_canvas.pack(fill="x")
         self.takeoff_profile_canvas.bind("<Configure>", lambda e: self._redraw_takeoff_profile())
 
         # --- «Траєкторія» = текст (звіти висоти+кута), карта маршруту, профілі (висота+кут) ---
-        trajectory_tab, trajectory_inner = make_scroll_tab("Маршрут")
+        trajectory_tab, trajectory_inner = make_scroll_tab(i18n.t("tab_route"))
 
-        traj_text_box = ttk.LabelFrame(trajectory_inner, text="Звіт")
+        traj_text_box = ttk.LabelFrame(trajectory_inner, text=i18n.t("tab_report"))
         traj_text_box.pack(fill="x", pady=(0, 8))
         ttk.Label(traj_text_box, text=i18n.t("tab_elevation")).pack(anchor="w", padx=4)
         self.elev_report_text = make_plain_text(traj_text_box, height=5)
@@ -216,7 +216,7 @@ class AnalysisPageMixin:
         # (без зуму й без можливості редагування -- на відміну від «Місія»,
         # де планується редактор місії; спільна лише "чиста" математика
         # тайлів (compute_tile_bounds/fetch_tiles), сама відмальовка -- ні)
-        traj_map_box = ttk.LabelFrame(trajectory_inner, text="Маршрут — вигляд згори", height=460)
+        traj_map_box = ttk.LabelFrame(trajectory_inner, text=i18n.t("box_route_top_view"), height=460)
         traj_map_box.pack(fill="x", pady=(0, 8))
         traj_map_box.pack_propagate(False)
         self._traj_map_box = traj_map_box
@@ -273,11 +273,11 @@ class AnalysisPageMixin:
         self.angle_canvas.bind("<Configure>", lambda e: self._redraw_angle_plot())
 
         # --- «Глісада» = звіт+погода, потім карта, потім графік глісади ---
-        landing_tab, landing_inner = make_scroll_tab("Посадка")
+        landing_tab, landing_inner = make_scroll_tab(i18n.t("tab_landing_phase"))
         self.glide_report_text = make_plain_text(landing_inner, height=8)
         self.glide_report_text.pack(fill="x", pady=(0, 8))
-        add_map_block(landing_inner, "Посадка — 4×4 км")
-        landing_chart_box = ttk.LabelFrame(landing_inner, text="Графік глісади")
+        add_map_block(landing_inner, i18n.t("box_landing_area"))
+        landing_chart_box = ttk.LabelFrame(landing_inner, text=i18n.t("box_glide_chart"))
         landing_chart_box.pack(fill="x", pady=(0, 8))
         self.landing_canvas = tk.Canvas(landing_chart_box, bg="white", height=300)
         self.landing_canvas.pack(fill="x")
@@ -292,7 +292,7 @@ class AnalysisPageMixin:
         border = colors["border"]
 
         self.analysis_save_btn = tk.Button(
-            parent, text="Зберегти PDF",
+            parent, text=i18n.t("btn_save_pdf"),
             bg=idle_bg, fg=idle_fg, activebackground="#C9CFD6", activeforeground=idle_fg,
             font=("Segoe UI", 9, "bold"), bd=2, relief="groove", cursor="hand2",
             padx=16, pady=6,
@@ -316,14 +316,13 @@ class AnalysisPageMixin:
             from reportlab.pdfbase.ttfonts import TTFont
         except ImportError:
             messagebox.showerror(
-                "PDF",
-                "Для збереження в PDF потрібна бібліотека reportlab.\n\n"
-                "Встановіть її командою:\n    pip install reportlab",
+                i18n.t("msg_reportlab_missing_title"),
+                i18n.t("msg_reportlab_missing_body"),
             )
             return
 
         path = filedialog.asksaveasfilename(
-            title="Зберегти звіт аналізу",
+            title=i18n.t("dlg_save_report_title"),
             defaultextension=".pdf",
             filetypes=[("PDF", "*.pdf")],
         )
@@ -335,10 +334,10 @@ class AnalysisPageMixin:
         try:
             self._render_analysis_pdf(path, pdfcanvas, A4, mm, pdfmetrics, TTFont, ImageReader, images)
         except Exception as e:
-            messagebox.showerror("PDF", f"Не вдалося зберегти PDF:\n{e}")
+            messagebox.showerror("PDF", i18n.t("msg_pdf_save_failed_body", error=e))
             return
 
-        messagebox.showinfo("PDF", f"Звіт збережено:\n{path}")
+        messagebox.showinfo("PDF", i18n.t("msg_saved_body", path=path))
 
 
     @staticmethod
@@ -491,34 +490,37 @@ class AnalysisPageMixin:
             y -= draw_h + line_h
 
         c.setFont(font_name, 9)
-        write_title("Звіт аналізу місії — Mission Analyzer")
-        write_body(f"Файл місії: {self.file_var.get() or '—'}")
-        write_body(f"Дата польоту: {self.flight_date_var.get() or '—'}   "
-                   f"Час вильоту (UTC): {self.flight_time_var.get() or '—'}   "
-                   f"Прибуття: {self.arrival_time_var.get() if hasattr(self, 'arrival_time_var') else '—'}")
+        write_title(i18n.t("pdf_title"))
+        write_body(i18n.t("pdf_mission_file_fmt", file=self.file_var.get() or "—"))
+        write_body(i18n.t(
+            "pdf_flight_info_fmt",
+            date=self.flight_date_var.get() or "—",
+            time=self.flight_time_var.get() or "—",
+            arrival=self.arrival_time_var.get() if hasattr(self, "arrival_time_var") else "—",
+        ))
         y -= line_h
 
-        write_heading("Зліт — погода в точці старту")
-        write_body(self._get_text(self.takeoff_weather_text) or "Немає даних (натисніть «Отримати метео»).")
+        write_heading(i18n.t("pdf_heading_takeoff_weather"))
+        write_body(self._get_text(self.takeoff_weather_text) or i18n.t("msg_no_data_press_weather"))
         write_image(images.get("takeoff_map"))
         write_image(images.get("takeoff_profile"))
         y -= line_h
 
-        write_heading("Маршрут — карта")
+        write_heading(i18n.t("pdf_heading_route_map"))
         write_image(images.get("route_map"))
 
-        write_heading("Маршрут — графік висоти")
-        write_body(self._get_text(self.elev_report_text) or "Без зауважень.")
+        write_heading(i18n.t("pdf_heading_route_elevation"))
+        write_body(self._get_text(self.elev_report_text) or i18n.t("pdf_no_remarks"))
         write_image(images.get("elevation"))
         y -= line_h
 
-        write_heading("Маршрут — кут траєкторії")
-        write_body(self._get_text(self.angle_report_text) or "Без зауважень.")
+        write_heading(i18n.t("pdf_heading_route_angle"))
+        write_body(self._get_text(self.angle_report_text) or i18n.t("pdf_no_remarks"))
         write_image(images.get("angle"))
         y -= line_h
 
-        write_heading("Посадка — проблеми та погода посадки")
-        write_body(self._get_text(self.glide_report_text) or "Без зауважень.")
+        write_heading(i18n.t("pdf_heading_landing"))
+        write_body(self._get_text(self.glide_report_text) or i18n.t("pdf_no_remarks"))
         write_image(images.get("landing_map"))
         write_image(images.get("landing_profile"))
 
@@ -534,7 +536,7 @@ class AnalysisPageMixin:
         """Модальний календар для вибору дати польоту."""
         import datetime
         dlg = tk.Toplevel(self)
-        dlg.title("Дата польоту")
+        dlg.title(i18n.t("dlg_pick_date_title"))
         dlg.resizable(False, False)
         dlg.transient(self)
         dlg.grab_set()
@@ -559,7 +561,7 @@ class AnalysisPageMixin:
         day_btns: list[tk.Button] = []
         selected_cell: dict = {"btn": None}
 
-        DAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"]
+        DAY_NAMES = i18n.t("calendar_day_names").split(",")
         for col, dn in enumerate(DAY_NAMES):
             ttk.Label(cal_frame, text=dn, width=4, anchor="center",
                       font=("Segoe UI", 8, "bold")).grid(row=0, column=col, padx=1, pady=2)
@@ -653,7 +655,7 @@ class AnalysisPageMixin:
             if speed <= 0:
                 raise ValueError
         except ValueError:
-            self.arrival_time_var.set("швидкість?")
+            self.arrival_time_var.set(i18n.t("hint_bad_speed"))
             return
 
         total_dist = sum(
@@ -677,7 +679,7 @@ class AnalysisPageMixin:
         arrival = departure + datetime.timedelta(seconds=flight_seconds)
         mins = int(flight_seconds // 60)
         self.arrival_time_var.set(
-            f"{arrival.strftime('%H:%M')} (+{mins} хв)"
+            i18n.t("label_minutes_suffix_fmt", time=arrival.strftime("%H:%M"), mins=mins)
         )
 
 
@@ -705,29 +707,29 @@ class AnalysisPageMixin:
     def _fetch_meteo(self):
         """Запит метеоданих з Open-Meteo для координат старту та посадки."""
         if self.analyzer is None:
-            messagebox.showwarning("Метео", "Спочатку завантажте місію")
+            messagebox.showwarning(i18n.t("msg_weather_title"), i18n.t("msg_load_mission_first_body"))
             return
 
         date_str = self.flight_date_var.get().strip()
         time_str = self.flight_time_var.get().strip()
         if not date_str:
-            messagebox.showwarning("Метео", "Вкажіть дату польоту (наприклад: 2026-08-10)")
+            messagebox.showwarning(i18n.t("msg_weather_title"), i18n.t("msg_set_flight_date_body"))
             return
         if not time_str:
-            messagebox.showwarning("Метео", "Оберіть час вильоту -- без нього неможливо отримати погоду і карта не відмалюється")
+            messagebox.showwarning(i18n.t("msg_weather_title"), i18n.t("msg_set_departure_time_body"))
             return
 
         # точка старту -- перша nav-точка, точка посадки -- остання
         wps = self.analyzer.nav_wps
         if not wps:
-            messagebox.showwarning("Метео", "Немає точок маршруту")
+            messagebox.showwarning(i18n.t("msg_weather_title"), i18n.t("msg_no_route_points_body"))
             return
 
         start_wp = wps[0]
         land_wp  = wps[-1]
 
         self._show_analysis_tabs()
-        self._set_meteo_texts("Завантаження метеоданих...", "Завантаження метеоданих...")
+        self._set_meteo_texts(i18n.t("status_loading_weather"), i18n.t("status_loading_weather"))
         self.notebook.select(0)  # перемикаємось на вкладку «Зліт»
         threading.Thread(
             target=self._meteo_worker,
@@ -742,7 +744,7 @@ class AnalysisPageMixin:
         try:
             self._meteo_worker_impl(date_str, time_str, start_wp, land_wp)
         except Exception as e:
-            err = f"Помилка отримання метео:\n{e}"
+            err = i18n.t("msg_weather_fetch_error_fmt", error=e)
             self.after(0, lambda: self._set_meteo_texts(err, err))
 
 
@@ -783,8 +785,8 @@ class AnalysisPageMixin:
         texts = []         # текст окремо для «Зліт» і «Глісада»
 
         for wp, label, az in [
-            (start_wp, "Старт (Зліт)", az_start),
-            (land_wp,  "Посадка",      az_land),
+            (start_wp, i18n.t("label_start_takeoff"), az_start),
+            (land_wp,  i18n.t("tab_landing_phase"),   az_land),
         ]:
             lines = []
             data, err = fetch_point(wp.lat, wp.lon)
@@ -794,22 +796,22 @@ class AnalysisPageMixin:
             wind_dir, wind_spd = None, None
 
             if err:
-                lines.append(f"  Помилка: {err}")
+                lines.append(i18n.t("weather_error_line_fmt", error=err))
                 map_data.append((None, None, az, label, err))
                 texts.append("\n".join(lines))
                 continue
 
             d = data.get("daily", {})
             if d:
-                lines.append(f"  Дата            : {date_str}")
-                lines.append(f"  Схід сонця      : {(d.get('sunrise') or ['?'])[0]}")
-                lines.append(f"  Захід сонця     : {(d.get('sunset')  or ['?'])[0]}")
+                lines.append(i18n.t("weather_date_line_fmt", date=date_str))
+                lines.append(i18n.t("weather_sunrise_line_fmt", time=(d.get("sunrise") or ["?"])[0]))
+                lines.append(i18n.t("weather_sunset_line_fmt", time=(d.get("sunset") or ["?"])[0]))
                 t_max = (d.get("temperature_2m_max") or [None])[0]
                 t_min = (d.get("temperature_2m_min") or [None])[0]
-                lines.append(f"  Темп. (min/max) : {t_min}°C / {t_max}°C")
+                lines.append(i18n.t("weather_temp_minmax_line_fmt", t_min=t_min, t_max=t_max))
                 ws_max = (d.get("windspeed_10m_max") or [None])[0]
                 wd_dom = (d.get("winddirection_10m_dominant") or [None])[0]
-                lines.append(f"  Вітер макс.     : {ws_max} км/год, напрямок {wd_dom}°")
+                lines.append(i18n.t("weather_wind_max_line_fmt", speed=ws_max, dir=wd_dom))
 
             h = data.get("hourly", {})
             times = h.get("time", [])
@@ -819,10 +821,10 @@ class AnalysisPageMixin:
                 wind_spd = h.get("windspeed_10m",  [None] * (idx + 1))[idx]
                 wind_dir = h.get("winddirection_10m", [None] * (idx + 1))[idx]
                 tmp      = h.get("temperature_2m", [None] * (idx + 1))[idx]
-                lines.append(f"  — На {target} UTC —")
-                lines.append(f"  Швидкість вітру : {wind_spd} км/год")
-                lines.append(f"  Напрямок вітру  : {wind_dir}°")
-                lines.append(f"  Температура     : {tmp}°C")
+                lines.append(i18n.t("weather_at_time_header_fmt", time=target))
+                lines.append(i18n.t("weather_wind_speed_line_fmt", speed=wind_spd))
+                lines.append(i18n.t("weather_wind_dir_line_fmt", dir=wind_dir))
+                lines.append(i18n.t("weather_temp_line_fmt", temp=tmp))
 
                 if wind_dir is not None and wind_spd is not None:
                     diff = abs((wind_dir - az + 360) % 360)
@@ -830,15 +832,12 @@ class AnalysisPageMixin:
                         diff = 360 - diff
                     cross = abs(90 - abs(diff - 90))
                     head_on = diff < 90
-                    lines.append(
-                        f"  Боковий вітер   : {cross:.0f}°  "
-                        f"({'⚠ сильний' if cross > 30 else 'норма'})"
-                    )
-                    lines.append(
-                        f"  Зустрічний вітер: {'так ✓ (добре)' if head_on else 'ні (попутний)'}"
-                    )
+                    strength = i18n.t("weather_strong_word") if cross > 30 else i18n.t("weather_normal_word")
+                    lines.append(i18n.t("weather_crosswind_line_fmt", cross=cross, strength=strength))
+                    headwind_val = i18n.t("weather_headwind_yes") if head_on else i18n.t("weather_headwind_no")
+                    lines.append(i18n.t("weather_headwind_line_fmt", value=headwind_val))
             else:
-                lines.append(f"  Погодинні дані на {target} UTC: недоступні")
+                lines.append(i18n.t("weather_hourly_unavailable_fmt", time=target))
 
             map_data.append((wind_dir, wind_spd, az, label, None))
             texts.append("\n".join(lines))
@@ -855,7 +854,7 @@ class AnalysisPageMixin:
                 canvas.delete("all")
                 canvas.create_text(
                     canvas.winfo_width() // 2 or 150, canvas.winfo_height() // 2 or 150,
-                    text=f"Карта недоступна\n{err}", fill="#FF6666",
+                    text=i18n.t("msg_map_unavailable_fmt", error=err), fill="#FF6666",
                     font=("Segoe UI", 9), justify="center",
                 )
                 continue
@@ -918,13 +917,13 @@ class AnalysisPageMixin:
                     canvas.delete("all")
                     canvas.create_text(
                         canvas.winfo_width() // 2 or 150, canvas.winfo_height() // 2 or 150,
-                        text=f"Помилка відмальовки:\n{e}",
+                        text=i18n.t("msg_render_error_fmt", error=e),
                         fill="#FF6666", font=("Segoe UI", 9), justify="center",
                     )
 
             self.after(0, do_render)
         except Exception as e:
-            err_text = f"Помилка завантаження карти:\n{e}"
+            err_text = i18n.t("msg_map_load_error_fmt", error=e)
             self.after(0, lambda: (
                 canvas.delete("all"),
                 canvas.create_text(
@@ -999,11 +998,17 @@ class AnalysisPageMixin:
         if intro:
             # у вступному тексті (до першого "=== ... ===") може ховатися
             # абзац "Глісада заходу на посадку..." без власного заголовка --
-            # витягуємо його окремо, решта інтро йде в блок висоти
+            # витягуємо його окремо, решта інтро йде в блок висоти.
+            #
+            # Заголовки самого report_text приходять з analyzer.py через
+            # i18n.t() -- в англійському режимі UI вони будуть англійською,
+            # тому перевіряємо ключові слова ОБОМА мовами одразу, а не
+            # лише українською (інакше в EN усе валилось би в один блок).
             intro_paragraphs = re.split(r"\n\s*\n", intro)
             intro_elevation_parts = []
             for para in intro_paragraphs:
-                if "глісад" in para.lower():
+                p_low = para.lower()
+                if "глісад" in p_low or "glide" in p_low:
                     glide_blocks.append(para.strip())
                 else:
                     intro_elevation_parts.append(para)
@@ -1016,20 +1021,20 @@ class AnalysisPageMixin:
             body = parts[i + 1] if i + 1 < len(parts) else ""
             block = (header + "\n" + body).rstrip()
             h_low = header.lower()
-            if "гліссад" in h_low or "глісад" in h_low or "посадк" in h_low:
+            if any(k in h_low for k in ("гліссад", "глісад", "посадк", "glide", "landing")):
                 glide_blocks.append(block)
-            elif "кут" in h_low:
+            elif any(k in h_low for k in ("кут", "angle")):
                 angle_blocks.append(block)
-            elif "висот" in h_low:
+            elif any(k in h_low for k in ("висот", "elevation", "height")):
                 elevation_blocks.append(block)
             else:
                 # невідома категорія -- краще показати десь, ніж загубити
                 elevation_blocks.append(block)
             i += 2
 
-        self._set_text_widget(self.elev_report_text, "\n\n".join(elevation_blocks) or "Без зауважень.")
-        self._set_text_widget(self.angle_report_text, "\n\n".join(angle_blocks) or "Без зауважень.")
-        self._glide_issues_text = "\n\n".join(glide_blocks) or "Без зауважень по глісаді."
+        self._set_text_widget(self.elev_report_text, "\n\n".join(elevation_blocks) or i18n.t("pdf_no_remarks"))
+        self._set_text_widget(self.angle_report_text, "\n\n".join(angle_blocks) or i18n.t("pdf_no_remarks"))
+        self._glide_issues_text = "\n\n".join(glide_blocks) or i18n.t("msg_no_remarks_glide")
         self._refresh_glide_panel()
 
 
