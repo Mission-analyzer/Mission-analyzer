@@ -45,9 +45,8 @@ class HelpPageMixin:
 
         update_row = ttk.Frame(changelog_tab)
         update_row.pack(fill="x", pady=(0, 6))
-        ttk.Button(
-            update_row, text=i18n.t("btn_check_updates"),
-            command=self._check_for_updates,
+        self._reg_i18n(
+            ttk.Button(update_row, command=self._check_for_updates), "text", "btn_check_updates",
         ).pack(side="left")
         self.update_status_var = tk.StringVar(value="")
         ttk.Label(update_row, textvariable=self.update_status_var, foreground="#666").pack(
@@ -59,6 +58,27 @@ class HelpPageMixin:
         changelog_text.insert("end", f"{i18n.t('app_title')} — {i18n.t('label_version')} {meta.VERSION}")
         changelog_text.insert("end", meta.format_changelog(i18n.get_lang()))
         changelog_text.config(state="disabled")
+
+        # Notebook.tab(text=...) -- інший API, ніж .configure(text=...),
+        # тому окремий callback, а не self._reg_i18n. Текст довідки й
+        # changelog теж перебудовуємо цілком (звичайний текстовий блок,
+        # не окремі віджети з підписами) -- обидва дешеві, без мережі.
+        def _retranslate_help_page():
+            help_notebook.tab(help_tab, text=i18n.t("tab_help"))
+            help_notebook.tab(changelog_tab, text=i18n.t("tab_changelog"))
+
+            help_text.config(state="normal")
+            help_text.delete("1.0", "end")
+            help_text.insert("end", i18n.t("help_text_body"))
+            help_text.config(state="disabled")
+
+            changelog_text.config(state="normal")
+            changelog_text.delete("1.0", "end")
+            changelog_text.insert("end", f"{i18n.t('app_title')} — {i18n.t('label_version')} {meta.VERSION}")
+            changelog_text.insert("end", meta.format_changelog(i18n.get_lang()))
+            changelog_text.config(state="disabled")
+
+        self._retranslate_callbacks.append(_retranslate_help_page)
 
     def _check_for_updates(self, silent: bool = False):
         """Перевіряє GitHub Releases у фоновому потоці. silent=True --
@@ -134,10 +154,8 @@ class HelpPageMixin:
         if hasattr(self, "update_status_var"):
             self.update_status_var.set(i18n.t("status_update_installed"))
         messagebox.showinfo(
-            "Оновлення",
-            "Оновлення встановлено.\n\n"
-            f"Резервна копія попередніх файлів: {backup_dir}\n\n"
-            "Перезапустіть програму, щоб застосувати зміни.",
+            i18n.t("msg_update_title"),
+            i18n.t("msg_update_installed_body_fmt", backup_dir=backup_dir),
         )
 
 
