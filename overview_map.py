@@ -18,6 +18,7 @@ import io
 import math
 import tkinter as tk
 
+import i18n
 from analyzer import MissionAnalyzer
 from geo import TILE_SIZE, lonlat_to_tile_xy, lonlat_to_pixel
 from map_view import _decode_tile_image, MapTooLargeError
@@ -219,7 +220,8 @@ def render_area_map(canvas: tk.Canvas, lat: float, lon: float, zoom: int,
 
     if wind_dir is not None:
         wind_to = (wind_dir + 180) % 360
-        arrow(wind_to, R * 0.60, "#00BFFF", 3, f"{wind_spd:.0f}км/г\n{wind_dir:.0f}°", "#00BFFF")
+        arrow(wind_to, R * 0.60, "#00BFFF", 3,
+              f"{wind_spd:.0f}{i18n.t('unit_kmh_short')}\n{wind_dir:.0f}°", "#00BFFF")
 
         if flight_az is not None:
             diff = abs((wind_dir - flight_az + 360) % 360)
@@ -230,7 +232,7 @@ def render_area_map(canvas: tk.Canvas, lat: float, lon: float, zoom: int,
             canvas.create_rectangle(4, H - 22, W - 4, H - 4,
                                     fill="#000000", outline="", stipple="gray50", tags="overlay")
             canvas.create_text(W // 2, H - 12, fill=color, font=("Segoe UI", 8, "bold"),
-                               text=f"Боковий вітер: {cross:.0f}°", tags="overlay")
+                               text=i18n.t("weather_crosswind_map_label_fmt", cross=cross), tags="overlay")
 
     canvas.config(scrollregion=(0, 0, W, H))
 
