@@ -537,6 +537,15 @@ _TR: dict[str, dict[str, str]] = {
         "uk": "Для збереження в PDF потрібна бібліотека reportlab.\n\nВстановіть її командою:\n    pip install reportlab",
         "en": "Saving to PDF requires the reportlab library.\n\nInstall it with:\n    pip install reportlab",
     },
+    "msg_update_installed_body_fmt": {
+        "uk": "Оновлення встановлено.\n\nРезервна копія попередніх файлів: {backup_dir}\n\nПерезапустіть програму, щоб застосувати зміни.",
+        "en": "Update installed.\n\nBackup of previous files: {backup_dir}\n\nRestart the program to apply the changes.",
+    },
+    "unit_kmh_short": {"uk": "км/г", "en": "km/h"},
+    "weather_crosswind_map_label_fmt": {
+        "uk": "Боковий вітер: {cross:.0f}°",
+        "en": "Crosswind: {cross:.0f}°",
+    },
 }
 
 
