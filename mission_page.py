@@ -62,6 +62,8 @@ class MissionPageMixin:
         load_btn, save_btn = self._make_toggle_action_buttons(
             btns, [(i18n.t("btn_load"), self.load_mission), (i18n.t("btn_save"), self.save_csv)]
         )
+        self._reg_i18n(load_btn, "text", "btn_load")
+        self._reg_i18n(save_btn, "text", "btn_save")
         load_btn.pack(side="left")
         save_btn.pack(side="left", padx=6)
 
@@ -117,6 +119,13 @@ class MissionPageMixin:
         for col, (key, width) in table_headings.items():
             self.mission_table.heading(col, text=i18n.t(key))
             self.mission_table.column(col, width=width, anchor="center", stretch=False)
+        self._table_headings = table_headings  # для ретрансляції нижче
+
+        def _retranslate_table_headers():
+            for col, (key, _width) in self._table_headings.items():
+                self.mission_table.heading(col, text=i18n.t(key))
+
+        self._retranslate_callbacks.append(_retranslate_table_headers)
         table_vbar = ttk.Scrollbar(table_frame, orient="vertical", command=self.mission_table.yview)
         self.mission_table.configure(yscrollcommand=table_vbar.set)
         self.mission_table.pack(side="left", fill="x", expand=True)
@@ -210,6 +219,17 @@ class MissionPageMixin:
 
         self._connect_idle_style = dict(bg=idle_bg, fg=idle_fg, padx=idle_pad[0], pady=idle_pad[1])
         self._connect_active_style = dict(bg=active_bg, fg=active_fg, padx=active_pad[0], pady=active_pad[1])
+
+        def _retranslate_connect_btn():
+            # текст кнопки залежить від стану з'єднання, а не лише мови --
+            # звичайний self._reg_i18n тут не підходить, тому окремий
+            # callback, який дивиться на self._flight_conn
+            if self._flight_conn is not None:
+                self.connect_btn.configure(text=i18n.t("btn_disconnect"))
+            else:
+                self.connect_btn.configure(text=i18n.t("btn_connect"))
+
+        self._retranslate_callbacks.append(_retranslate_connect_btn)
 
 
     @staticmethod
