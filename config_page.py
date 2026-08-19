@@ -28,70 +28,85 @@ class ConfigPageMixin:
         page_config.grid(row=0, column=0, sticky="nsew")
         self.pages["config"] = page_config
 
-        opts = ttk.LabelFrame(page_config, text=i18n.t("label_params"))
+        opts = ttk.LabelFrame(page_config)
         opts.pack(fill="x", **pad)
+        self._reg_i18n(opts, "text", "label_params")
 
-        ttk.Label(opts, text=i18n.t("label_alt_min")).grid(row=0, column=0, sticky="w", padx=6, pady=4)
+        self._reg_i18n(ttk.Label(opts), "text", "label_alt_min").grid(row=0, column=0, sticky="w", padx=6, pady=4)
         ttk.Entry(opts, textvariable=self.alt_min_var, width=8).grid(row=0, column=1, sticky="w")
 
-        ttk.Label(opts, text=i18n.t("label_turn_min")).grid(row=0, column=2, sticky="w", padx=(16, 6))
+        self._reg_i18n(ttk.Label(opts), "text", "label_turn_min").grid(row=0, column=2, sticky="w", padx=(16, 6))
         ttk.Entry(opts, textvariable=self.turn_min_var, width=8).grid(row=0, column=3, sticky="w")
 
-        ttk.Label(opts, text=i18n.t("label_cruise_speed")).grid(row=0, column=4, sticky="w", padx=(16, 6))
+        self._reg_i18n(ttk.Label(opts), "text", "label_cruise_speed").grid(row=0, column=4, sticky="w", padx=(16, 6))
         ttk.Entry(opts, textvariable=self.cruise_speed_var, width=6).grid(row=0, column=5, sticky="w")
 
-        ttk.Checkbutton(opts, text=i18n.t("check_srtm"), variable=self.use_srtm_var).grid(
-            row=1, column=0, sticky="w", padx=6, pady=(2, 4)
-        )
+        self._reg_i18n(
+            ttk.Checkbutton(opts, variable=self.use_srtm_var), "text", "check_srtm"
+        ).grid(row=1, column=0, sticky="w", padx=6, pady=(2, 4))
         ttk.Entry(opts, textvariable=self.srtm_var).grid(row=1, column=1, columnspan=2, sticky="we", padx=4)
-        ttk.Button(opts, text=i18n.t("btn_browse"), command=self.browse_srtm).grid(row=1, column=3, sticky="w", padx=6)
+        self._reg_i18n(
+            ttk.Button(opts, command=self.browse_srtm), "text", "btn_browse"
+        ).grid(row=1, column=3, sticky="w", padx=6)
 
-        ttk.Label(opts, text=i18n.t("label_map_cache")).grid(row=2, column=0, sticky="w", padx=6, pady=(2, 4))
+        self._reg_i18n(ttk.Label(opts), "text", "label_map_cache").grid(row=2, column=0, sticky="w", padx=6, pady=(2, 4))
         ttk.Entry(opts, textvariable=self.tilecache_var).grid(row=2, column=1, columnspan=2, sticky="we", padx=4)
-        ttk.Button(opts, text=i18n.t("btn_browse"), command=self.browse_tilecache).grid(row=2, column=3, sticky="w", padx=6)
+        self._reg_i18n(
+            ttk.Button(opts, command=self.browse_tilecache), "text", "btn_browse"
+        ).grid(row=2, column=3, sticky="w", padx=6)
 
         opts.columnconfigure(1, weight=1)
         opts.columnconfigure(2, weight=1)
 
-        map_opts = ttk.LabelFrame(page_config, text=i18n.t("label_map_settings"))
+        map_opts = ttk.LabelFrame(page_config)
         map_opts.pack(fill="x", **pad)
+        self._reg_i18n(map_opts, "text", "label_map_settings")
 
-        ttk.Label(map_opts, text=i18n.t("label_map_provider")).grid(row=0, column=0, sticky="w", padx=6, pady=4)
+        self._reg_i18n(ttk.Label(map_opts), "text", "label_map_provider").grid(row=0, column=0, sticky="w", padx=6, pady=4)
 
-        self._provider_names = {}   # display_name -> key (для текущего языка)
-        provider_display_names = []
-        current_display = None
-        for key, info in PROVIDERS.items():
-            display = i18n.t(f"provider_{key}")
-            self._provider_names[display] = key
-            provider_display_names.append(display)
-            if key == self.provider_key:
-                current_display = display
-
-        self.provider_var = tk.StringVar(value=current_display or provider_display_names[0])
+        # Комбобокс показує ПЕРЕКЛАДЕНІ назви провайдерів, а не самі ключі
+        # -- при зміні мови потрібно перебудувати і values, і поточне
+        # значення (self.provider_key лишається тим самим, міняється лише
+        # те, як він підписаний). Звичайний self._reg_i18n тут не підходить
+        # (там лише один рядок тексту, тут -- цілий список), тому окремий
+        # retranslate-callback.
+        self.provider_var = tk.StringVar()
         provider_box = ttk.Combobox(
-            map_opts, textvariable=self.provider_var, state="readonly",
-            values=provider_display_names, width=28,
+            map_opts, textvariable=self.provider_var, state="readonly", width=28,
         )
         provider_box.grid(row=0, column=1, sticky="w", padx=4)
         provider_box.bind("<<ComboboxSelected>>", self._on_provider_selected)
+        self._provider_names = {}   # display_name -> key (для поточної мови)
 
-        ttk.Checkbutton(
-            map_opts, text=i18n.t("check_occupied"), variable=self.show_occupied_var,
+        def _retranslate_provider_box():
+            self._provider_names = {}
+            display_names = []
+            current_display = None
+            for key, info in PROVIDERS.items():
+                display = i18n.t(f"provider_{key}")
+                self._provider_names[display] = key
+                display_names.append(display)
+                if key == self.provider_key:
+                    current_display = display
+            provider_box.configure(values=display_names)
+            self.provider_var.set(current_display or (display_names[0] if display_names else ""))
+
+        _retranslate_provider_box()
+        self._retranslate_callbacks.append(_retranslate_provider_box)
+
+        self._reg_i18n(
+            ttk.Checkbutton(map_opts, variable=self.show_occupied_var), "text", "check_occupied",
         ).grid(row=1, column=0, columnspan=2, sticky="w", padx=6, pady=(2, 4))
 
         # === Картографічні та метеосервіси ===
-        svc_frame = ttk.LabelFrame(page_config, text=i18n.t("box_map_weather_services"))
+        svc_frame = ttk.LabelFrame(page_config)
         svc_frame.pack(fill="x", **pad)
+        self._reg_i18n(svc_frame, "text", "box_map_weather_services")
 
-        services = [
-            (i18n.t("label_occupied_layer"), self.url_occupied_var),
-            (i18n.t("label_windy_service"), self.url_windy_var),
-            (i18n.t("label_openmeteo_service"), self.url_forecast_var),
-            (i18n.t("label_gwa_service"), self.url_gwa_var),
-        ]
-        for row_i, (label, var) in enumerate(services):
-            ttk.Label(svc_frame, text=label).grid(row=row_i, column=0, sticky="w", padx=6, pady=3)
+        service_keys = ["label_occupied_layer", "label_windy_service", "label_openmeteo_service", "label_gwa_service"]
+        service_vars = [self.url_occupied_var, self.url_windy_var, self.url_forecast_var, self.url_gwa_var]
+        for row_i, (key, var) in enumerate(zip(service_keys, service_vars)):
+            self._reg_i18n(ttk.Label(svc_frame), "text", key).grid(row=row_i, column=0, sticky="w", padx=6, pady=3)
             ttk.Entry(svc_frame, textvariable=var).grid(
                 row=row_i, column=1, sticky="we", padx=(4, 6), pady=3
             )
