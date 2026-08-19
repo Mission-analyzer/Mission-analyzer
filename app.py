@@ -86,6 +86,20 @@ class App(MissionPageMixin, AnalysisPageMixin, ConfigPageMixin, HelpPageMixin, t
         self._map_loading = False  # флаг занятости загрузки тайлов (кнопок статуса больше нет)
         self._flight_conn = None   # активне з'єднання з польотним контролером (pymavlink/pyserial)
 
+        # --- реєстр для перемикання мови БЕЗ перестворення дерева віджетів ---
+        # _i18n_registry: (widget, option, key, kwargs) -- прості статичні
+        # підписи ("Дата польоту:", назви вкладок тощо), де переклад завжди
+        # той самий текст за тим самим ключем. _retranslate_callbacks --
+        # функції без аргументів для всього іншого: текст, що залежить від
+        # поточного стану (кнопка Connect/Disconnect, заголовки колонок
+        # таблиці, назви вкладок Notebook -- інше API, ніж
+        # .configure(text=...)), і легкий перемальовок графіків/тексту
+        # звіту (залежать від мови через i18n.t() в analyzer.py, але сам
+        # перемальовок дешевий і без мережі). Карти сюди НЕ входять -- на
+        # них немає жодного тексту, що залежить від мови.
+        self._i18n_registry: list = []
+        self._retranslate_callbacks: list = []
+
         # выбранный провайдер карты хранится как ключ (не как текст на экране) —
         # так переключение языка не ломает текущий выбор в комбобоксе
         self.provider_key = self._settings_data.get("provider_key", DEFAULT_PROVIDER_KEY)
@@ -317,38 +331,81 @@ class App(MissionPageMixin, AnalysisPageMixin, ConfigPageMixin, HelpPageMixin, t
             icons.draw_icon(btn._nav_canvas, btn._nav_icon, fg)
 
 
+    def _reg_i18n(self, widget, option: str, key: str, **kwargs):
+        """
+        Реєструє widget для автоматичного оновлення option (майже завжди
+        "text") при зміні мови -- і одразу застосовує поточний переклад.
+        Викликати ОДРАЗУ після створення віджета замість прямого
+        text=i18n.t(key) у конструкторі. Повертає widget -- зручно
+        вставляти в той самий рядок створення.
+
+        Тільки для СТАТИЧНИХ підписів (той самий ключ і ті самі kwargs
+        завжди). Якщо текст залежить від змінного стану (номер точки,
+        число проблем, стан підключення) -- використовуй
+        self._retranslate_callbacks замість цього.
+        """
+        try:
+            widget.configure(**{option: i18n.t(key, **kwargs)})
+        except tk.TclError:
+            pass
+        self._i18n_registry.append((widget, option, key, kwargs))
+        return widget
+
+
+    def _refresh_i18n(self):
+        """
+        Оновлює текст УСІХ зареєстрованих віджетів (self._reg_i18n) під
+        поточну мову, а також викликає self._retranslate_callbacks --
+        БЕЗ перестворення дерева віджетів. Мертві (знищені) віджети
+        (наприклад, ще не побудована сторінка) тихо пропускаються й
+        приберуться з реєстру.
+        """
+        alive = []
+        for widget, option, key, kwargs in self._i18n_registry:
+            try:
+                widget.configure(**{option: i18n.t(key, **kwargs)})
+                alive.append((widget, option, key, kwargs))
+            except tk.TclError:
+                pass
+            except Exception:
+                import traceback
+                traceback.print_exc()
+                alive.append((widget, option, key, kwargs))
+        self._i18n_registry = alive
+
+        for cb in self._retranslate_callbacks:
+            try:
+                cb()
+            except Exception:
+                # ОДИН зламаний callback (наприклад, помилка в даних
+                # конкретної місії) НЕ повинен зривати решту -- інакше
+                # все, що зареєстровано ПІСЛЯ нього в списку, тихо не
+                # оновиться. Друкуємо трасування в консоль (видно при
+                # запуску `python main.py`), але не валимо решту UI.
+                import traceback
+                traceback.print_exc()
+
+
+    def _refresh_lang_toggle_styles(self):
+        """Підсвічує активну мову на кнопках UA/EN -- викликається і при
+        побудові шапки, і при кожній зміні мови (без цього кнопка "просто
+        текст", підсвітка активного стану залишалась би від попередньої
+        мови)."""
+        if not hasattr(self, "_lang_buttons"):
+            return
+        current = i18n.get_lang()
+        for lang_code, btn in self._lang_buttons.items():
+            active = current == lang_code
+            btn.configure(style="LangToggleActive.TButton" if active else "LangToggle.TButton")
+
+
     def _switch_language(self, lang_code: str):
         if i18n.get_lang() == lang_code:
             return
         i18n.set_lang(lang_code)
         self._save_settings()
-
-        # запам'ятовуємо, чи були вкладки "Аналіз" реально показані (а не
-        # плейсхолдер) -- щоб після перебудови UI відновити той самий
-        # стан, а не рахувати важкі графіки/карту даремно, якщо їх і не
-        # було видно
-        tabs_were_visible = hasattr(self, "notebook") and self.notebook.winfo_ismapped()
-
-        for child in self.winfo_children():
-            child.destroy()
-
-        # статусы карты завязаны на предыдущий рендер — после смены языка
-        # холст карты всё равно пуст (пересоздан), так что сбрасываем
-        self.map_status_var.set("")
-        self.occupied_status_var.set("")
-
-        self._build_ui()
-
-        if self.analyzer is not None:
-            self._distribute_report_text(self._captured_report())
-            self.status_var.set(
-                i18n.t("status_ready_fmt", n=len(self.analyzer.nav_wps), m=len(self.analyzer.issues))
-            )
-            self._analysis_built = False
-            if tabs_were_visible:
-                self._show_analysis_tabs()  # сам викличе _ensure_analysis_built()
-            self._populate_mission_table(self.analyzer.all_wps)
-            self.mission_content.tkraise()
+        self._refresh_i18n()
+        self._refresh_lang_toggle_styles()
 
     # ------------------------------------------------------------- обзоры --
 
@@ -377,22 +434,25 @@ class App(MissionPageMixin, AnalysisPageMixin, ConfigPageMixin, HelpPageMixin, t
 
         title_box = ttk.Frame(header_inner, style="Header.TFrame")
         title_box.pack(side="left")
-        ttk.Label(title_box, text=i18n.t("app_title"), style="Header.TLabel").pack(anchor="w")
-        ttk.Label(title_box, text=i18n.t("app_subtitle"), style="HeaderSub.TLabel").pack(anchor="w")
+        self._reg_i18n(ttk.Label(title_box, style="Header.TLabel"), "text", "app_title").pack(anchor="w")
+        self._reg_i18n(ttk.Label(title_box, style="HeaderSub.TLabel"), "text", "app_subtitle").pack(anchor="w")
 
         right_box = ttk.Frame(header_inner, style="Header.TFrame")
         right_box.pack(side="right")
 
         lang_box = ttk.Frame(right_box, style="Header.TFrame")
         lang_box.pack(anchor="e")
+        self._lang_buttons = {}
         for lang_code, label in (("uk", "UA"), ("en", "EN")):
-            active = i18n.get_lang() == lang_code
             btn = ttk.Button(
                 lang_box, text=label, width=4,
-                style="LangToggleActive.TButton" if active else "LangToggle.TButton",
                 command=lambda lc=lang_code: self._switch_language(lc),
             )
             btn.pack(side="left", padx=2)
+            self._lang_buttons[lang_code] = btn
+        self._refresh_lang_toggle_styles()
+        if self._refresh_lang_toggle_styles not in self._retranslate_callbacks:
+            self._retranslate_callbacks.append(self._refresh_lang_toggle_styles)
 
         # --- підключення до польотного контролера (тільки на сторінці
         # "Місія") -- порт / швидкість обміну / кнопка, як у Mission Planner
@@ -414,8 +474,18 @@ class App(MissionPageMixin, AnalysisPageMixin, ConfigPageMixin, HelpPageMixin, t
         self.analysis_save_box = ttk.Frame(self._header_right_slot, style="Header.TFrame")
         self._build_analysis_save_button(self.analysis_save_box)
 
+        # update_idletasks() ОБОВ'ЯЗКОВО перед winfo_reqheight()/reqwidth()
+        # -- інакше Tk ще не порахував реальний розмір щойно створених
+        # віджетів і повертає майже 0 (перевірено: 1px замість реальних
+        # ~33px), тому слот замикався на розмірі, де вміст просто не
+        # влазив -- звідси й зникле підключення до ArduPilot. pack_propagate
+        # (False) фіксує ОБИДВА виміри -- ширину теж треба задати явно,
+        # інакше вона так само замкнеться в майже нуль (ширина ніколи не
+        # задавалась явно, на відміну від height=).
+        self.update_idletasks()
         slot_h = max(self.connect_box.winfo_reqheight(), self.analysis_save_box.winfo_reqheight())
-        self._header_right_slot.configure(height=slot_h)
+        slot_w = max(self.connect_box.winfo_reqwidth(), self.analysis_save_box.winfo_reqwidth())
+        self._header_right_slot.configure(height=slot_h, width=slot_w)
         self._header_right_slot.pack_propagate(False)
         self._header_right_slot.pack(anchor="e", pady=(6, 0))
 
@@ -432,6 +502,7 @@ class App(MissionPageMixin, AnalysisPageMixin, ConfigPageMixin, HelpPageMixin, t
             btn = self._make_nav_button(navbar, icon_name, i18n.t(label_key), page_key)
             btn.pack(side="left")
             self.nav_buttons[page_key] = btn
+            self._reg_i18n(btn._nav_label, "text", label_key)
 
         # --- контейнер страниц: все страницы занимают одну и ту же ячейку,
         # видна только поднятая наверх (tkraise) -- resize окна не ломает
