@@ -47,7 +47,7 @@ class AnalysisPageMixin:
         flight_row = ttk.Frame(page_analysis)
         flight_row.pack(fill="x", **pad)
 
-        ttk.Label(flight_row, text=i18n.t("label_flight_date")).pack(side="left")
+        self._reg_i18n(ttk.Label(flight_row), "text", "label_flight_date").pack(side="left")
         self._date_btn = tk.Button(
             flight_row,
             textvariable=self.flight_date_var,
@@ -63,7 +63,7 @@ class AnalysisPageMixin:
             import datetime
             self.flight_date_var.set(datetime.date.today().strftime("%Y-%m-%d"))
 
-        ttk.Label(flight_row, text=i18n.t("label_departure_time")).pack(side="left")
+        self._reg_i18n(ttk.Label(flight_row), "text", "label_departure_time").pack(side="left")
         hours = [f"{h:02d}:00" for h in range(24)]
         hour_combo = ttk.Combobox(
             flight_row, textvariable=self.flight_time_var,
@@ -71,26 +71,26 @@ class AnalysisPageMixin:
         )
         hour_combo.pack(side="left", padx=(4, 16))
 
-        ttk.Label(flight_row, text=i18n.t("label_arrival_time")).pack(side="left")
+        self._reg_i18n(ttk.Label(flight_row), "text", "label_arrival_time").pack(side="left")
         self.arrival_time_var = tk.StringVar(value="—")
         ttk.Label(flight_row, textvariable=self.arrival_time_var,
                   font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
 
-        ttk.Button(
-            flight_row, text=i18n.t("btn_get_weather"),
+        weather_btn = ttk.Button(
+            flight_row,
             command=self._fetch_meteo,
-        ).pack(side="left")
+        )
+        weather_btn.pack(side="left")
+        self._reg_i18n(weather_btn, "text", "btn_get_weather")
 
         # плейсхолдер поки не натиснута "Отримати метео" -- вкладки з
         # порожніми/сірими картами й текстом виглядають зламаними, тому
         # ховаємо їх до появи реальних даних
         self.analysis_placeholder = ttk.Frame(page_analysis)
         self.analysis_placeholder.pack(fill="both", expand=True, **pad)
-        ttk.Label(
-            self.analysis_placeholder,
-            text=i18n.t("hint_press_get_weather"),
-            font=("Segoe UI", 11),
-            foreground="#888",
+        self._reg_i18n(
+            ttk.Label(self.analysis_placeholder, font=("Segoe UI", 11), foreground="#888"),
+            "text", "hint_press_get_weather",
         ).pack(expand=True)
 
         self.notebook = ttk.Notebook(page_analysis)
@@ -99,15 +99,22 @@ class AnalysisPageMixin:
         self._meteo_canvases = []          # [0]=Зліт(старт), [1]=Глісада(посадка)
         self._meteo_map_images = [[], []]  # тримаємо refs до PhotoImage
         self._meteo_render_params = [None, None]  # кеш параметрів останнього рендеру -- для перемальовки при <Configure>
+        self._last_meteo_raw = None        # кеш сирих даних API -- для ретрансляції тексту погоди без мережі
         self._glide_issues_text = ""       # текст проблем глісади зі звіту (наповнюється при завантаженні місії)
         self._land_weather_text = ""       # текст погоди для посадки (наповнюється по кнопці "Отримати метео")
 
-        def make_scroll_tab(tab_title: str):
+        def make_scroll_tab(tab_title_key: str):
             """Один вертикальний скрол на всю вкладку -- контент іде
             суцільним стовпцем зверху вниз, ніяких вкладених панелей.
-            Повертає (tab_frame, inner_frame)."""
+            Повертає (tab_frame, inner_frame). tab_title_key -- КЛЮЧ
+            i18n (не готовий текст) -- сама реєструє ретрансляцію
+            заголовка вкладки Notebook.tab() (інший API, ніж
+            .configure(text=...), тому self._reg_i18n сюди не годиться)."""
             tab = ttk.Frame(self.notebook)
-            self.notebook.add(tab, text=tab_title)
+            self.notebook.add(tab, text=i18n.t(tab_title_key))
+            self._retranslate_callbacks.append(
+                lambda _t=tab, _k=tab_title_key: self.notebook.tab(_t, text=i18n.t(_k))
+            )
 
             outer = tk.Canvas(tab, highlightthickness=0, bg=self.palette["bg"])
             vbar = ttk.Scrollbar(tab, orient="vertical", command=outer.yview)
@@ -148,13 +155,15 @@ class AnalysisPageMixin:
 
             return tab, inner
 
-        def add_map_block(parent, map_title: str, height: int = 460):
+        def add_map_block(parent, map_title_key: str, height: int = 460):
             """Карта -- КВАДРАТНА, на всю ширину вкладки. Ширину задає
             fill="x" (надійно працює -- підтверджено скріншотом), а
             висота підганяється під ВЛАСНУ (не чужу) ширину блока напряму
             в його ж <Configure> -- без посередників. Панорамування --
-            перетягуванням миші (bind_pan), без окремих смуг прокрутки."""
-            map_box = ttk.LabelFrame(parent, text=map_title, height=height)
+            перетягуванням миші (bind_pan), без окремих смуг прокрутки.
+            map_title_key -- КЛЮЧ i18n, реєструється через self._reg_i18n."""
+            map_box = ttk.LabelFrame(parent, height=height)
+            self._reg_i18n(map_box, "text", map_title_key)
             map_box.pack(fill="x", pady=(0, 8))
             map_box.pack_propagate(False)
 
@@ -189,26 +198,28 @@ class AnalysisPageMixin:
             )
 
         # --- «Зліт» = текст (погода), карта, профіль висоти зльоту ---
-        takeoff_tab, takeoff_inner = make_scroll_tab(i18n.t("tab_takeoff"))
+        takeoff_tab, takeoff_inner = make_scroll_tab("tab_takeoff")
         self.takeoff_weather_text = make_plain_text(takeoff_inner, height=8)
         self.takeoff_weather_text.pack(fill="x", pady=(0, 8))
-        add_map_block(takeoff_inner, i18n.t("box_takeoff_area"))
+        add_map_block(takeoff_inner, "box_takeoff_area")
 
-        takeoff_profile_box = ttk.LabelFrame(takeoff_inner, text=i18n.t("box_takeoff_profile"))
+        takeoff_profile_box = ttk.LabelFrame(takeoff_inner)
+        self._reg_i18n(takeoff_profile_box, "text", "box_takeoff_profile")
         takeoff_profile_box.pack(fill="x", pady=(0, 8))
         self.takeoff_profile_canvas = tk.Canvas(takeoff_profile_box, bg="white", height=280)
         self.takeoff_profile_canvas.pack(fill="x")
         self.takeoff_profile_canvas.bind("<Configure>", lambda e: self._redraw_takeoff_profile())
 
         # --- «Траєкторія» = текст (звіти висоти+кута), карта маршруту, профілі (висота+кут) ---
-        trajectory_tab, trajectory_inner = make_scroll_tab(i18n.t("tab_route"))
+        trajectory_tab, trajectory_inner = make_scroll_tab("tab_route")
 
-        traj_text_box = ttk.LabelFrame(trajectory_inner, text=i18n.t("tab_report"))
+        traj_text_box = ttk.LabelFrame(trajectory_inner)
+        self._reg_i18n(traj_text_box, "text", "tab_report")
         traj_text_box.pack(fill="x", pady=(0, 8))
-        ttk.Label(traj_text_box, text=i18n.t("tab_elevation")).pack(anchor="w", padx=4)
+        self._reg_i18n(ttk.Label(traj_text_box), "text", "tab_elevation").pack(anchor="w", padx=4)
         self.elev_report_text = make_plain_text(traj_text_box, height=5)
         self.elev_report_text.pack(fill="x", padx=4, pady=(0, 4))
-        ttk.Label(traj_text_box, text=i18n.t("tab_angle")).pack(anchor="w", padx=4)
+        self._reg_i18n(ttk.Label(traj_text_box), "text", "tab_angle").pack(anchor="w", padx=4)
         self.angle_report_text = make_plain_text(traj_text_box, height=5)
         self.angle_report_text.pack(fill="x", padx=4, pady=(0, 4))
 
@@ -216,7 +227,8 @@ class AnalysisPageMixin:
         # (без зуму й без можливості редагування -- на відміну від «Місія»,
         # де планується редактор місії; спільна лише "чиста" математика
         # тайлів (compute_tile_bounds/fetch_tiles), сама відмальовка -- ні)
-        traj_map_box = ttk.LabelFrame(trajectory_inner, text=i18n.t("box_route_top_view"), height=460)
+        traj_map_box = ttk.LabelFrame(trajectory_inner, height=460)
+        self._reg_i18n(traj_map_box, "text", "box_route_top_view")
         traj_map_box.pack(fill="x", pady=(0, 8))
         traj_map_box.pack_propagate(False)
         self._traj_map_box = traj_map_box
@@ -260,28 +272,74 @@ class AnalysisPageMixin:
         self._trajectory_map_images = []
         self.trajectory_map_canvas.bind("<Configure>", _on_traj_map_configure)
 
-        elev_box = ttk.LabelFrame(trajectory_inner, text=i18n.t("tab_elevation"))
+        elev_box = ttk.LabelFrame(trajectory_inner)
+        self._reg_i18n(elev_box, "text", "tab_elevation")
         elev_box.pack(fill="x", pady=(0, 8))
         self.plot_canvas = tk.Canvas(elev_box, bg="white", height=320)
         self.plot_canvas.pack(fill="x")
         self.plot_canvas.bind("<Configure>", lambda e: self._redraw_plot())
 
-        angle_box = ttk.LabelFrame(trajectory_inner, text=i18n.t("tab_angle"))
+        angle_box = ttk.LabelFrame(trajectory_inner)
+        self._reg_i18n(angle_box, "text", "tab_angle")
         angle_box.pack(fill="x", pady=(0, 8))
         self.angle_canvas = tk.Canvas(angle_box, bg="white", height=320)
         self.angle_canvas.pack(fill="x")
         self.angle_canvas.bind("<Configure>", lambda e: self._redraw_angle_plot())
 
         # --- «Глісада» = звіт+погода, потім карта, потім графік глісади ---
-        landing_tab, landing_inner = make_scroll_tab(i18n.t("tab_landing_phase"))
+        landing_tab, landing_inner = make_scroll_tab("tab_landing_phase")
         self.glide_report_text = make_plain_text(landing_inner, height=8)
         self.glide_report_text.pack(fill="x", pady=(0, 8))
-        add_map_block(landing_inner, i18n.t("box_landing_area"))
-        landing_chart_box = ttk.LabelFrame(landing_inner, text=i18n.t("box_glide_chart"))
+        add_map_block(landing_inner, "box_landing_area")
+        landing_chart_box = ttk.LabelFrame(landing_inner)
+        self._reg_i18n(landing_chart_box, "text", "box_glide_chart")
         landing_chart_box.pack(fill="x", pady=(0, 8))
         self.landing_canvas = tk.Canvas(landing_chart_box, bg="white", height=300)
         self.landing_canvas.pack(fill="x")
         self.landing_canvas.bind("<Configure>", lambda e: self._redraw_landing_plot())
+
+        # Текст звіту (аналіз висоти/кута/глісади) і заголовки на самих
+        # графіках приходять через i18n.t() з analyzer.py -- це не карта,
+        # а звичайний текст і легка локальна перемальовка (без мережі),
+        # тому оновлюємо їх при зміні мови. Якщо місію ще не завантажено
+        # -- нема чого оновлювати.
+        def _retranslate_analysis_content():
+            if self.analyzer is None:
+                return
+            self._distribute_report_text(self._captured_report())
+            self._redraw_plot()
+            self._redraw_takeoff_profile()
+            self._redraw_angle_plot()
+            self._redraw_landing_plot()
+
+        self._retranslate_callbacks.append(_retranslate_analysis_content)
+
+        # Текст погоди (Зліт/Посадка) форматується з уже отриманих даних
+        # API (self._last_meteo_raw, кешується в _meteo_worker_impl) -- БЕЗ
+        # повторного запиту в мережу. Компас-карти 4×4 км теж перемальовуємо
+        # локально з self._meteo_render_params (тайли вже завантажені) --
+        # там теж є текст, залежний від мови ("Боковий вітер").
+        def _retranslate_weather():
+            if self._last_meteo_raw:
+                texts = [
+                    self._format_weather_text(wp, label_key, az, date_str, hour, data, err)
+                    for wp, label_key, az, date_str, hour, data, err in self._last_meteo_raw
+                ]
+                self._set_meteo_texts(*texts)
+            for idx, params in enumerate(self._meteo_render_params):
+                if params is None:
+                    continue
+                (lat, lon, zoom, tiles, image_refs,
+                 tx_min, tx_max, ty_min, ty_max,
+                 flight_az, wind_dir, wind_spd) = params
+                canvas = self._meteo_canvases[idx]
+                render_area_map(
+                    canvas, lat, lon, zoom, tiles, image_refs,
+                    tx_min, tx_max, ty_min, ty_max,
+                    flight_az=flight_az, wind_dir=wind_dir, wind_spd=wind_spd,
+                )
+
+        self._retranslate_callbacks.append(_retranslate_weather)
 
 
     def _build_analysis_save_button(self, parent: ttk.Frame):
@@ -300,6 +358,7 @@ class AnalysisPageMixin:
             command=self._save_analysis_pdf,
         )
         self.analysis_save_btn.pack(side="left")
+        self._reg_i18n(self.analysis_save_btn, "text", "btn_save_pdf")
 
 
     def _save_analysis_pdf(self):
@@ -781,68 +840,88 @@ class AnalysisPageMixin:
         az_land  = bearing_deg(wps[-2].lat, wps[-2].lon,
                                land_wp.lat, land_wp.lon) if len(wps) > 1 else 0.0
 
-        map_data = []     # [(wind_dir, wind_spd, flight_az, label, error), ...]
-        texts = []         # текст окремо для «Зліт» і «Глісада»
+        map_data = []       # [(wind_dir, wind_spd, flight_az, label, error), ...]
+        texts = []           # текст окремо для «Зліт» і «Глісада»
+        raw_cache = []       # для перемальовки тексту при зміні мови -- БЕЗ мережі
 
-        for wp, label, az in [
-            (start_wp, i18n.t("label_start_takeoff"), az_start),
-            (land_wp,  i18n.t("tab_landing_phase"),   az_land),
+        for wp, label_key, az in [
+            (start_wp, "label_start_takeoff", az_start),
+            (land_wp,  "tab_landing_phase",   az_land),
         ]:
-            lines = []
             data, err = fetch_point(wp.lat, wp.lon)
-            lines.append(f" {label}  ({wp.lat:.5f}, {wp.lon:.5f})")
-            lines.append("=" * 44)
+            raw_cache.append((wp, label_key, az, date_str, hour, data, err))
+            texts.append(self._format_weather_text(wp, label_key, az, date_str, hour, data, err))
 
             wind_dir, wind_spd = None, None
+            if not err:
+                h = data.get("hourly", {})
+                times = h.get("time", [])
+                target = f"{date_str}T{hour:02d}:00"
+                idx = next((i for i, t in enumerate(times) if t == target), None)
+                if idx is not None:
+                    wind_spd = h.get("windspeed_10m",  [None] * (idx + 1))[idx]
+                    wind_dir = h.get("winddirection_10m", [None] * (idx + 1))[idx]
 
-            if err:
-                lines.append(i18n.t("weather_error_line_fmt", error=err))
-                map_data.append((None, None, az, label, err))
-                texts.append("\n".join(lines))
-                continue
+            map_data.append((wind_dir, wind_spd, az, i18n.t(label_key), err))
 
-            d = data.get("daily", {})
-            if d:
-                lines.append(i18n.t("weather_date_line_fmt", date=date_str))
-                lines.append(i18n.t("weather_sunrise_line_fmt", time=(d.get("sunrise") or ["?"])[0]))
-                lines.append(i18n.t("weather_sunset_line_fmt", time=(d.get("sunset") or ["?"])[0]))
-                t_max = (d.get("temperature_2m_max") or [None])[0]
-                t_min = (d.get("temperature_2m_min") or [None])[0]
-                lines.append(i18n.t("weather_temp_minmax_line_fmt", t_min=t_min, t_max=t_max))
-                ws_max = (d.get("windspeed_10m_max") or [None])[0]
-                wd_dom = (d.get("winddirection_10m_dominant") or [None])[0]
-                lines.append(i18n.t("weather_wind_max_line_fmt", speed=ws_max, dir=wd_dom))
-
-            h = data.get("hourly", {})
-            times = h.get("time", [])
-            target = f"{date_str}T{hour:02d}:00"
-            idx = next((i for i, t in enumerate(times) if t == target), None)
-            if idx is not None:
-                wind_spd = h.get("windspeed_10m",  [None] * (idx + 1))[idx]
-                wind_dir = h.get("winddirection_10m", [None] * (idx + 1))[idx]
-                tmp      = h.get("temperature_2m", [None] * (idx + 1))[idx]
-                lines.append(i18n.t("weather_at_time_header_fmt", time=target))
-                lines.append(i18n.t("weather_wind_speed_line_fmt", speed=wind_spd))
-                lines.append(i18n.t("weather_wind_dir_line_fmt", dir=wind_dir))
-                lines.append(i18n.t("weather_temp_line_fmt", temp=tmp))
-
-                if wind_dir is not None and wind_spd is not None:
-                    diff = abs((wind_dir - az + 360) % 360)
-                    if diff > 180:
-                        diff = 360 - diff
-                    cross = abs(90 - abs(diff - 90))
-                    head_on = diff < 90
-                    strength = i18n.t("weather_strong_word") if cross > 30 else i18n.t("weather_normal_word")
-                    lines.append(i18n.t("weather_crosswind_line_fmt", cross=cross, strength=strength))
-                    headwind_val = i18n.t("weather_headwind_yes") if head_on else i18n.t("weather_headwind_no")
-                    lines.append(i18n.t("weather_headwind_line_fmt", value=headwind_val))
-            else:
-                lines.append(i18n.t("weather_hourly_unavailable_fmt", time=target))
-
-            map_data.append((wind_dir, wind_spd, az, label, None))
-            texts.append("\n".join(lines))
-
+        self._last_meteo_raw = raw_cache  # кеш для ретрансляції тексту без мережі
         self.after(0, lambda: self._on_meteo_ready(texts, map_data))
+
+
+    def _format_weather_text(self, wp, label_key, az, date_str, hour, data, err) -> str:
+        """
+        Форматує текстовий звіт погоди в точці (Зліт/Посадка) з уже
+        отриманих даних API (data/err) під ПОТОЧНУ мову. Винесено окремо
+        від _meteo_worker_impl, щоб при зміні мови можна було
+        переформатувати текст без повторного походу в мережу -- дані
+        (data/err) вже кешуються в self._last_meteo_raw.
+        """
+        label = i18n.t(label_key)
+        lines = [f" {label}  ({wp.lat:.5f}, {wp.lon:.5f})", "=" * 44]
+
+        if err:
+            lines.append(i18n.t("weather_error_line_fmt", error=err))
+            return "\n".join(lines)
+
+        d = data.get("daily", {})
+        if d:
+            lines.append(i18n.t("weather_date_line_fmt", date=date_str))
+            lines.append(i18n.t("weather_sunrise_line_fmt", time=(d.get("sunrise") or ["?"])[0]))
+            lines.append(i18n.t("weather_sunset_line_fmt", time=(d.get("sunset") or ["?"])[0]))
+            t_max = (d.get("temperature_2m_max") or [None])[0]
+            t_min = (d.get("temperature_2m_min") or [None])[0]
+            lines.append(i18n.t("weather_temp_minmax_line_fmt", t_min=t_min, t_max=t_max))
+            ws_max = (d.get("windspeed_10m_max") or [None])[0]
+            wd_dom = (d.get("winddirection_10m_dominant") or [None])[0]
+            lines.append(i18n.t("weather_wind_max_line_fmt", speed=ws_max, dir=wd_dom))
+
+        h = data.get("hourly", {})
+        times = h.get("time", [])
+        target = f"{date_str}T{hour:02d}:00"
+        idx = next((i for i, t in enumerate(times) if t == target), None)
+        if idx is not None:
+            wind_spd = h.get("windspeed_10m",  [None] * (idx + 1))[idx]
+            wind_dir = h.get("winddirection_10m", [None] * (idx + 1))[idx]
+            tmp      = h.get("temperature_2m", [None] * (idx + 1))[idx]
+            lines.append(i18n.t("weather_at_time_header_fmt", time=target))
+            lines.append(i18n.t("weather_wind_speed_line_fmt", speed=wind_spd))
+            lines.append(i18n.t("weather_wind_dir_line_fmt", dir=wind_dir))
+            lines.append(i18n.t("weather_temp_line_fmt", temp=tmp))
+
+            if wind_dir is not None and wind_spd is not None:
+                diff = abs((wind_dir - az + 360) % 360)
+                if diff > 180:
+                    diff = 360 - diff
+                cross = abs(90 - abs(diff - 90))
+                head_on = diff < 90
+                strength = i18n.t("weather_strong_word") if cross > 30 else i18n.t("weather_normal_word")
+                lines.append(i18n.t("weather_crosswind_line_fmt", cross=cross, strength=strength))
+                headwind_val = i18n.t("weather_headwind_yes") if head_on else i18n.t("weather_headwind_no")
+                lines.append(i18n.t("weather_headwind_line_fmt", value=headwind_val))
+        else:
+            lines.append(i18n.t("weather_hourly_unavailable_fmt", time=target))
+
+        return "\n".join(lines)
 
 
     def _on_meteo_ready(self, texts: list, map_data: list):
